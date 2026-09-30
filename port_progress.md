@@ -251,7 +251,9 @@ El port está 100% implementado, enlazado y empaquetado. El único paso pendient
   con `make -n -B`: sin `SAFER_DRAW_SPEEDHACK` ni `SAMPLERS_SPEEDHACK`). CMake pasa a `add_custom_target`
   + `build_vitagl.sh` (hace `make clean` cuando los flags cambian; con ExternalProject quedaban objetos
   viejos). `gl_init` igual a Ice Age: `vglInitExtended(0, 960, 544, 6 MB, msaa)` sin `vglUseCachedMem`.
-- **Estado:** compilado, pendiente de prueba en consola.
+- **Resultado en consola (build 13:09):** ✅ entra al mapa y se juega sin GPUCRASH (reporte del usuario,
+  2026-09-30). Mismo build con softfloat VFP + `engine_log 0` + Release: sin regresiones visibles. FPS
+  en 3D sin medir todavía.
 
 ## Limpieza + rendimiento (2026-09-30)
 
@@ -270,3 +272,105 @@ El port está 100% implementado, enlazado y empaquetado. El único paso pendient
   0 saltos problemáticos en todo el `.so`. `softfloat.c` compila con `-fno-fast-math`.
 - **`msaa 0`** por defecto (1 = 2x, 2 = 4x).
 - `config.txt` en `ux0:data/carnivoresdinosaurhunter/`: `msaa N`, `engine_log 0/1`, `vfp_float 0/1`.
+
+## Controles físicos (2026-09-30) — mismo mapeo que Carnivores-Ice-Age-vita
+
+- `source/input.c` portado de Ice Age (mismo motor Tatem). Cambian solo los nombres JNI
+  (`com_tatem_dinhunter_DinHunterGLSurface_*` / `DinHunterAndroid_nativeOnBackPressed`).
+- Re-verificado contra `libdinHunter.so`: todos los símbolos existen (`gui_controls` 0xc000 = 128 ×
+  0x180; `gui_touched_*` de 16 slots; `game_fire/alternative_fire/weapon/binoculars/call/map/
+  movement_controller`). Offsets de `GUI_PointInControl` iguales (+0x0C/+0x10 x/y, +0x1C/+0x20 w/h,
+  +0x24 flags, +0x2C scale, +0x33 visible). `GUI_GetBackgroundMovements` idéntica al pseudo-C de Ice Age
+  → el hook del stick derecho aplica 1:1. `GUI_RecalcTouchLocation` usa `v_sy - y*scaleY`, equivalente a
+  `(real_height - y)*scaleY` con v_sy=320/real=544.
+- Mapeo: stick izq. mover (toque sintético sobre `game_movement_controller`), stick der. cámara (hook),
+  R/✕ disparar, L disparo alternativo, □ arma, △ binoculares, ↑ llamar, Select/↓ mapa, Start/◯ atrás.
+- Quitado de `main.c`: el manejo de touch propio y el hack `Weapon_Fire()` con ✕/R.
+- Nuevas opciones en `config.txt`: `look_sensitivity` (10–400), `invert_look_y`. `config.txt` se
+  reescribe en cada arranque.
+- **Estado:** compilado (13:35), pendiente de prueba en consola.
+- Docs: `README.md` (formato de los otros ports) y `RELEASE.md` (v1.0.0).
+
+## Build con psvita-toolkit (2026-09-30)
+
+- **Error:** `psvita-toolkit build --preset release --clean` fallaba en `vitaGL_lib` con `No rule to
+  make target 'clean'` / `no makefile found`. El toolkit copia el código a un directorio temporal
+  respetando `.gitignore`, y la regla `Makefile` (pensada para el Makefile que genera CMake) también
+  ignoraba `vendor/vitaGL/Makefile`. **Tampoco había entrado en el commit a8a408f.**
+- **Fix:** en `.gitignore`, `Makefile` → `/Makefile` y `cmake_install.cmake` → `/cmake_install.cmake`.
+  Era el único archivo del árbol afectado (`git ls-files --others --ignored`).
+- **Build OK** con el toolkit (Release, vitaGL `SOFTFP_ABI=1 NO_SPLASHSCREEN=1 NO_DEBUG=1
+  HAVE_SHADER_CACHE=1`). Único warning propio: `mktemp` deprecado en `dynlib.c` (inofensivo).
+- **Ojo:** el toolkit reportó el VPK como `build/._carnivoresdinosaurhunter.vpk` (AppleDouble de 4 KB
+  del disco externo). Correr `psvita-toolkit clean-junk` antes de desplegar.
+
+---
+
+## Bug #4 — Data abort en FMOD al cargar un sonido que no existe (log 010 + dump 1790791802)
+
+- **Síntoma:** a los ~231 s de juego, Data abort en `memcpy` (PC `SceLibKernel seg1+0x56`,
+  `R2=0xffffffff`); LR `0x980afeec` = `libfmodex.so+0xafeec` (lectura de un archivo `FMOD_OPENMEMORY`),
+  copiando 3 bytes desde `0xda981568` (basura).
+- **Causa:** `Sounds_AddSound()` no chequea el retorno de `Files_OpenFileAltType(..., "ogg")`; si el
+  archivo no está en ningún zip, `Files_OpenFileOfType` no toca el `_FileHandler` y FMOD recibe basura
+  de la pila como datos (+0x00) / tamaño (+0x9c).
+- **Fix:** `Files_OpenFileAltType` enganchada en `source/patch.c` (1:1 con el pseudo-C) y limpia el
+  handler si el archivo no aparece → FMOD falla con INVALID_PARAM, el slot queda -1.
+- **Estado:** compilado (16:57, incluido en las builds 17:12 y 17:20). Sin crash en la prueba del usuario, falta una sesión larga para confirmarlo.
+
+## Bug #5 — Pantalla negra al arrancar con partida guardada (log 011)
+
+- **Síntoma:** build Debug de las 16:49, pantalla negra. vitaGL OK (`sceGxmSetViewport_sfp` presente,
+  no es el Bug #2). El log entra al main loop y hace ~224 `stat/fopen/fclose` del APK en 650 ms (uno por
+  asset), después nada más.
+- **Causa:** ahora existe `.dinhunter/CarnivoresData.dt`. `EAGLView::LoadGameData()` lo abre con
+  `fopen` y **nunca lo cierra** (pseudo-C `out_ghidra.c:~40980`), así que el APK recibe el segundo FILE
+  de SceLibc (`0x81710130` en vez de `0x81700010`). El libzip del `.so` trae `ferror()` de bionic
+  inlineado: lee `fp->_flags` (u16 en +0x0C) `& 0x40` de un FILE de SceLibc. Con el 1º slot da 0 por
+  casualidad; con el 2º da "error" → `_zip_find_central_dir` falla → `zip_open` falla → ningún asset
+  carga. (Lo mismo explicaba en el log 009 los `Failed to open archive` al abrir el APK como pack 1
+  mientras el APK principal ya estaba abierto.)
+- **Fix:** `zip_ferror_patch()` en `source/patch.c`: los 5 `ldrh r3,[r3,#12]` (Thumb `0x899b`) de
+  los chequeos de `ferror` → `movs r3,#0` (`0x2300`), verificando el opcode antes de escribir.
+  Sitios: `0x6816c` `_zip_cdir_write`, `0x688f0` `_zip_dirent_write`, `0x69d64`/`0x69d8a`
+  `_zip_readcdir`, `0x6a464` `_zip_find_central_dir` (todos los que Ghidra muestra como
+  `_IO_read_base & 0x40`; objdump confirma que no hay más).
+- **Build:** `psvita-toolkit build --preset release --clean` (16:57) + `clean-junk`. Verificado en el
+  ELF: `sceGxmSetViewport_sfp` presente, flags vitaGL `SOFTFP_ABI=1 NO_SPLASHSCREEN=1 NO_DEBUG=1
+  HAVE_SHADER_CACHE=1` (sin `DRAW_SPEEDHACK`).
+- **Resultado en consola (build Debug 17:12):** ✅ arranca con partida guardada, carga assets y packs (reporte del usuario, 2026-09-30).
+
+## Packs de contenido (2026-09-30)
+
+- `CarnivoresBundleOne.apk` / `CarnivoresBundleTwo.apk` confirmados como packs de **Dinosaur Hunter**
+  (manifest: `com.tatem.dinhunter.bundle.one` / `.two`, los IDs que compara
+  `nativeSetProductPurchased`). One = area3 + area4 + sniper (227 archivos); Two = area6 + dbsgun +
+  x_bow (134 archivos). No repiten ningún archivo del APK principal.
+- `main.c` ya los carga si existen `ux0:data/carnivoresdinosaurhunter/bundle1.apk` / `bundle2.apk`.
+  Dependen del fix de libzip del Bug #5 (antes, un segundo `zip_open` fallaba: `Failed to open archive`
+  en el log 009).
+- Docs: README (instalación), RELEASE.md (qué funciona, bugs #4/#5, problemas conocidos),
+  PORTING_PLAN.md §7.
+- **Resultado en consola (build Debug 17:12):** ✅ funciona (reporte del usuario, 2026-09-30): arranca
+  con partida guardada y carga los packs.
+
+## Build Debug con logs de verdad (2026-09-30)
+
+- La build Release de las 16:57 no dejaba log útil: Release solo guarda `l_error`, y `config.txt`
+  tenía `engine_log 0`.
+- En Debug (`DEBUG_SOLOADER`), `reimpl/log.c` ahora loguea **siempre** los mensajes del motor, sin
+  importar `engine_log`. `patch.c` registra `zip ferror patch: N/5 sites patched.` y, solo en Debug,
+  cada `zip_open()` con el código de error de libzip (hook + `SO_CONTINUE`).
+- Con esa build (17:12) el usuario confirmó que el Bug #5 está resuelto y que los packs funcionan.
+
+## HUD táctil al 1 % (2026-09-30)
+
+- Pedido: todos los botones virtuales al 1 % de opacidad, menos la brújula.
+- `GUI_DrawControls` enganchada en `input.c`: el alfa (byte alto de `+0x28`) de los 11 controles del
+  HUD de caza se escala a `hud_opacity` % antes de dibujar y se restaura después. El motor cambia esos
+  colores mientras se juega, por eso se hace en cada frame. La brújula es el modelo `compas.3dn`, no un
+  control, así que queda igual. Los menús no se tocan. Detalle en PORTING_PLAN.md §8.
+- Nueva opción `hud_opacity` en `config.txt` (0–100, por defecto 1; 100 = desactivado).
+- **Build:** Release 17:20 (`psvita-toolkit build --preset release --clean` + `clean-junk`).
+  Verificado en el ELF: `GUI_DrawControls_hook`, parche de libzip, `sceGxmSetViewport_sfp`.
+- **Estado:** pendiente de prueba en consola.

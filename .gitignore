@@ -28,8 +28,8 @@ assets/
 /build/
 CMakeCache.txt
 CMakeFiles/
-Makefile
-cmake_install.cmake
+/Makefile
+/cmake_install.cmake
 *.elf
 *.self
 *.vpk

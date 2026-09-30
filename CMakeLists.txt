@@ -107,6 +107,7 @@ add_executable(${CMAKE_PROJECT_NAME}
                source/dynlib.c
                source/java.c
                source/patch.c
+               source/input.c
                source/reimpl/bits/_ctype.c
                source/reimpl/errno.c
                source/reimpl/io.c

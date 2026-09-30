@@ -17,7 +17,12 @@
 // While loading it logs several lines per asset (Files.cpp) and tags plain
 // progress messages as ERROR, which forces a log flush to the memory card.
 // Fatal messages always pass.
+// Debug builds always log the engine: that's what they are for.
+#ifdef DEBUG_SOLOADER
+#define ENGINE_LOG_ENABLED(prio) 1
+#else
 #define ENGINE_LOG_ENABLED(prio) (setting_engineLog || (prio) == ANDROID_LOG_FATAL)
+#endif
 
 #define print_common \
     switch (prio) { \

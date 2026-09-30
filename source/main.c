@@ -4,11 +4,10 @@
 #include "utils/utils.h"
 #include "utils/dialog.h"
 #include "reimpl/audio.h"
+#include "input.h"
 
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/kernel/processmgr.h>
-#include <psp2/ctrl.h>
-#include <psp2/touch.h>
 #include <psp2/power.h>
 #include <psp2/io/stat.h>
 
@@ -27,20 +26,19 @@ int sceLibcHeapSize = 4 * 1024 * 1024;
 so_module so_mod_fmod;
 so_module so_mod;
 
+// Placeholder Java objects: the engine keeps them and only ever uses them as
+// receivers for Call*Method, never dereferences them. input.c uses both.
+static int activity_placeholder, surface_placeholder;
+jobject activity_obj = (jobject) &activity_placeholder;
+jobject surface_obj  = (jobject) &surface_placeholder;
+
 // JNI Entry points from libdinHunter.so
 static jboolean (*isNativeAppInitialized)(void *env, void *thiz);
 static void (*nativeApplicationDidFinishLaunching)(void *env, void *thiz, jstring baseDir, jstring apkPath);
 static void (*nativeResume)(void *env, void *thiz);
 static void (*nativePause)(void *env, void *thiz);
-static void (*nativeOnBackPressed)(void *env, void *thiz);
 static void (*destroyFramebuffer)(void *env, void *thiz);
-static void (*nativeSetBundlesPaths)(void *env, void *thiz, jstring bundle1, jstring bundle2);
 static void (*nativeSetProductPurchased)(void *env, void *thiz, jstring prodId, jboolean purchased, jstring prodPath);
-
-static void (*touchesBegan)(void *env, void *thiz, jfloat x, jfloat y);
-static void (*touchesMoved)(void *env, void *thiz, jfloat x, jfloat y);
-static void (*touchesEnded)(void *env, void *thiz, jfloat x, jfloat y);
-static void (*touchesCancelled)(void *env, void *thiz, jfloat x, jfloat y);
 
 static void (*createFramebuffer)(void *env, void *thiz, jint w, jint h);
 static void (*setEnvironment)(void *env, void *thiz);
@@ -50,22 +48,9 @@ static void (*layoutSubviews)(void *env, void *thiz);
 static void (*facebook_nativeInit)(void *env, void *thiz);
 static void (*social_nativeInit)(void *env, void *thiz);
 
-static void (*Weapon_Fire)(void) = NULL;
-static int *game_stage_ptr = NULL;
-
-struct TouchSlot {
-    int id;
-    float x;
-    float y;
-};
-static struct TouchSlot active_touches[5];
-
 int main(int argc, char *argv[]) {
     l_info("--- Carnivores Dinosaur Hunter (PS Vita) starting ---");
 
-    for (int i = 0; i < 5; i++) {
-        active_touches[i].id = -1;
-    }
 
     soloader_init_all();
 
@@ -86,15 +71,9 @@ int main(int argc, char *argv[]) {
     nativeApplicationDidFinishLaunching = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterAndroid_nativeApplicationDidFinishLaunching");
     nativeResume = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterAndroid_nativeResume");
     nativePause = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterAndroid_nativePause");
-    nativeOnBackPressed = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterAndroid_nativeOnBackPressed");
     destroyFramebuffer = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterAndroid_destroyFramebuffer");
-    nativeSetBundlesPaths = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterAndroid_nativeSetBundlesPaths");
     nativeSetProductPurchased = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterAndroid_nativeSetProductPurchased");
 
-    touchesBegan = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterGLSurface_touchesBegan");
-    touchesMoved = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterGLSurface_touchesMoved");
-    touchesEnded = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterGLSurface_touchesEnded");
-    touchesCancelled = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterGLSurface_touchesCancelled");
 
     createFramebuffer = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterRenderer_createFramebuffer");
     setEnvironment = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_DinHunterRenderer_setEnvironment");
@@ -104,8 +83,6 @@ int main(int argc, char *argv[]) {
     facebook_nativeInit = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_utils_FacebookWrapper_nativeInit");
     social_nativeInit = (void *)so_symbol(&so_mod, "Java_com_tatem_dinhunter_utils_SocialUtils_nativeInit");
 
-    Weapon_Fire = (void *)so_symbol(&so_mod, "_Z11Weapon_Firev");
-    game_stage_ptr = (void *)so_symbol(&so_mod, "game_stage");
 
     l_info("Native symbols resolved.");
 
@@ -141,15 +118,9 @@ int main(int argc, char *argv[]) {
     jstring baseDirStr = jni->NewStringUTF(&jni, storage_dir);
     jstring apkPathStr = jni->NewStringUTF(&jni, apk_path);
 
-    if (nativeSetBundlesPaths) {
-        l_info("Calling nativeSetBundlesPaths...");
-        nativeSetBundlesPaths(&jni, NULL, apkPathStr, apkPathStr);
-        l_success("nativeSetBundlesPaths finished.");
-    }
-
     l_info("Calling nativeApplicationDidFinishLaunching...");
     if (nativeApplicationDidFinishLaunching) {
-        nativeApplicationDidFinishLaunching(&jni, (jobject)0x3, baseDirStr, apkPathStr);
+        nativeApplicationDidFinishLaunching(&jni, activity_obj, baseDirStr, apkPathStr);
     }
     l_success("nativeApplicationDidFinishLaunching finished.");
 
@@ -160,104 +131,41 @@ int main(int argc, char *argv[]) {
     if (nativeResize) nativeResize(&jni, NULL, 960, 544);
     l_success("Framebuffer created.");
 
-    // Unlock DLC packs
+    // Content packs. On Android they are separate apps
+    // (com.tatem.dinhunter.bundle.one/two): BundleChecker passes the pack's
+    // APK path, the engine keeps it as bundle1Path/bundle2Path and
+    // Files_OpenFileOfType() looks there for files that are not in the main
+    // APK. A pack marked as owned without its APK makes the engine offer
+    // dinosaurs/maps whose files don't exist (crash in log 010), so only mark
+    // a pack as owned when its APK is present -- like DinHunterAndroid does.
     if (nativeSetProductPurchased) {
-        jstring pack1Str = jni->NewStringUTF(&jni, "com.tatem.dinhunter.bundle.one");
-        jstring pack2Str = jni->NewStringUTF(&jni, "com.tatem.dinhunter.bundle.two");
-        jstring emptyStr = jni->NewStringUTF(&jni, "");
-        nativeSetProductPurchased(&jni, NULL, pack1Str, JNI_TRUE, emptyStr);
-        nativeSetProductPurchased(&jni, NULL, pack2Str, JNI_TRUE, emptyStr);
-        l_success("DLC Packs 1 & 2 unlocked.");
+        static const struct { const char *id, *path; } packs[] = {
+            { "com.tatem.dinhunter.bundle.one", DATA_PATH "bundle1.apk" },
+            { "com.tatem.dinhunter.bundle.two", DATA_PATH "bundle2.apk" },
+        };
+        for (int i = 0; i < 2; i++) {
+            jstring id = jni->NewStringUTF(&jni, packs[i].id);
+            if (file_exists(packs[i].path)) {
+                jstring path = jni->NewStringUTF(&jni, packs[i].path);
+                nativeSetProductPurchased(&jni, activity_obj, id, JNI_TRUE, path);
+                l_success("Content pack %d found: %s", i + 1, packs[i].path);
+            } else {
+                nativeSetProductPurchased(&jni, activity_obj, id, JNI_FALSE, NULL);
+                l_info("Content pack %d not installed (%s)", i + 1, packs[i].path);
+            }
+        }
     }
 
     // Start Audio
     audio_init();
     l_success("Audio subsystem initialized.");
 
-    // Start Touch Sampling
-    sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
-    sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
+    input_init();
 
     l_info("Entering main game loop.");
 
-    uint32_t old_buttons = 0;
-
     while (1) {
-        // Handle physical buttons
-        SceCtrlData pad;
-        sceCtrlPeekBufferPositive(0, &pad, 1);
-        uint32_t pressed = pad.buttons & ~old_buttons;
-        old_buttons = pad.buttons;
-
-        if (pressed & (SCE_CTRL_CIRCLE | SCE_CTRL_START)) {
-            if (nativeOnBackPressed) {
-                nativeOnBackPressed(&jni, NULL);
-            }
-        }
-
-        // In-game shooting with Cross / R-Trigger
-        if (game_stage_ptr && *game_stage_ptr == 9) {
-            if ((pressed & SCE_CTRL_CROSS) || (pressed & SCE_CTRL_RTRIGGER)) {
-                if (Weapon_Fire) {
-                    Weapon_Fire();
-                }
-            }
-        }
-
-        // Handle front touch input
-        SceTouchData touch;
-        sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1);
-
-        int seen[5] = {0};
-
-        for (int r = 0; r < touch.reportNum && r < 5; r++) {
-            int hid = touch.report[r].id;
-            float x = (float)touch.report[r].x * 960.0f / 1920.0f;
-            float y = (float)touch.report[r].y * 544.0f / 1088.0f;
-
-            if (x < 0.0f) x = 0.0f;
-            if (x > 960.0f) x = 960.0f;
-            if (y < 0.0f) y = 0.0f;
-            if (y > 544.0f) y = 544.0f;
-
-            int slot = -1;
-            for (int s = 0; s < 5; s++) {
-                if (active_touches[s].id == hid) {
-                    slot = s;
-                    break;
-                }
-            }
-
-            if (slot == -1) {
-                for (int s = 0; s < 5; s++) {
-                    if (active_touches[s].id == -1) {
-                        slot = s;
-                        active_touches[s].id = hid;
-                        active_touches[s].x = x;
-                        active_touches[s].y = y;
-                        if (touchesBegan) touchesBegan(&jni, NULL, x, y);
-                        break;
-                    }
-                }
-            } else {
-                if (active_touches[slot].x != x || active_touches[slot].y != y) {
-                    active_touches[slot].x = x;
-                    active_touches[slot].y = y;
-                    if (touchesMoved) touchesMoved(&jni, NULL, x, y);
-                }
-            }
-
-            if (slot >= 0 && slot < 5) {
-                seen[slot] = 1;
-            }
-        }
-
-        for (int s = 0; s < 5; s++) {
-            if (active_touches[s].id != -1 && !seen[s]) {
-                if (touchesEnded) touchesEnded(&jni, NULL, active_touches[s].x, active_touches[s].y);
-                active_touches[s].id = -1;
-            }
-        }
+        input_update();
 
         // Render current frame
         if (layoutSubviews) {

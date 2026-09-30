@@ -19,12 +19,17 @@
 extern "C" {
 #endif
 
+/** Right analog stick camera speed, percent (10..400). */
+extern int  setting_lookSensitivity;
+extern bool setting_invertLookY;
 /** 0 off, 1 2x, 2 4x MSAA (GPU cost at 960x544 in the 3D scenes). */
 extern int  setting_msaa;
 /** Forward the engine's __android_log_* spam to the log file. */
 extern bool setting_engineLog;
 /** Run the engine's soft-float math on the VFP (reimpl/softfloat.c). */
 extern bool setting_vfpFloat;
+/** Opacity of the touch HUD buttons, percent (0..100; compass not affected). */
+extern int  setting_hudOpacity;
 
 void settings_load();
 void settings_save();
