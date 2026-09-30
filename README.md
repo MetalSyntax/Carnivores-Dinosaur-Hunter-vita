@@ -39,9 +39,9 @@ A pack is unlocked only when its APK is present; without it, its maps and weapon
 | L | Alternative fire |
 | Square | Switch weapon |
 | Triangle | Binoculars |
-| D-pad up | Call |
+| Circle / D-pad up | Call |
 | Select / D-pad down | Map |
-| Start / Circle | Pause / back |
+| Start | Pause / back |
 
 The buttons press the game's own HUD controls, so they only act while that control is on screen
 (in menus, use the touch screen).

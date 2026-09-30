@@ -374,3 +374,10 @@ El port está 100% implementado, enlazado y empaquetado. El único paso pendient
 - **Build:** Release 17:20 (`psvita-toolkit build --preset release --clean` + `clean-junk`).
   Verificado en el ELF: `GUI_DrawControls_hook`, parche de libzip, `sceGxmSetViewport_sfp`.
 - **Estado:** pendiente de prueba en consola.
+
+## ◯ llama a los animales (2026-09-30)
+
+- Igual que Carnivores-Ice-Age-vita: ◯ se suma a ↑ sobre `game_call`, y "atrás"
+  (`nativeOnBackPressed`) queda solo en Start. Reemplaza el "Start/◯ atrás" de la sección de
+  controles físicos. README y RELEASE.md actualizados.
+- **Estado:** compilado (Release), pendiente de prueba en consola.

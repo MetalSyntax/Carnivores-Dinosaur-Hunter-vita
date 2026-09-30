@@ -52,9 +52,9 @@ menus, map loading and hunting in the 3D maps, with FMOD sound.**
 | L | Alternative fire |
 | Square | Switch weapon |
 | Triangle | Binoculars |
-| D-pad up | Call |
+| Circle / D-pad up | Call |
 | Select / D-pad down | Map |
-| Start / Circle | Pause / back |
+| Start | Pause / back |
 
 Buttons press the game's own HUD controls, so each one acts only while its control is on screen.
 Same mapping as the Carnivores: Ice Age Vita port.

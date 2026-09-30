@@ -105,7 +105,7 @@ static button_map buttons[] = {
     { SCE_CTRL_LTRIGGER,                  &ctl_alt_fire,   {0} },
     { SCE_CTRL_SQUARE,                    &ctl_weapon,     {0} },
     { SCE_CTRL_TRIANGLE,                  &ctl_binoculars, {0} },
-    { SCE_CTRL_UP,                        &ctl_call,       {0} },
+    { SCE_CTRL_UP | SCE_CTRL_CIRCLE,      &ctl_call,       {0} },
     { SCE_CTRL_SELECT | SCE_CTRL_DOWN,    &ctl_map,        {0} },
 };
 #define NUM_BUTTONS (sizeof(buttons) / sizeof(buttons[0]))
@@ -491,7 +491,7 @@ void input_update(void) {
     old_buttons = pad.buttons;
 
     // Android back key: pause menu in game, previous page in menus.
-    if ((pressed & (SCE_CTRL_START | SCE_CTRL_CIRCLE)) && nativeOnBackPressed) {
+    if ((pressed & SCE_CTRL_START) && nativeOnBackPressed) {
         jboolean wants_exit = nativeOnBackPressed(&jni, activity_obj);
         // true = main menu; Android would show "Exit?". Exiting is done from
         // the PS button on Vita, so this is only logged.
