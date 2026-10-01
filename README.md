@@ -30,26 +30,83 @@ A pack is unlocked only when its APK is present; without it, its maps and weapon
 
 ## Controls
 
+### Default controls
+
 | Vita | Action |
 |---|---|
 | Touch screen | Original touch controls |
 | Left stick | Move |
-| Right stick | Look |
-| R / Cross | Fire |
-| L | Alternative fire |
-| Square | Switch weapon |
-| Triangle | Binoculars |
-| Circle / D-pad up | Call |
+| Right stick | Look / aim |
+| R | Fire (draws the weapon first if it is holstered) / take photo |
+| Cross | Jump |
+| Square | Draw / holster weapon |
+| Triangle | Next weapon |
+| L | Binoculars |
+| Circle / D-pad up | Call dinosaurs |
 | Select / D-pad down | Map |
+| D-pad left | Weapon list (the HUD weapon button) |
+| D-pad right | Photo mode zoom in |
 | Start | Pause / back |
+| **Start + Select** | **PS Vita controls & camera menu** |
 
-The buttons press the game's own HUD controls, so they only act while that control is on screen
-(in menus, use the touch screen).
+Fire works with every "firing method" of the game's options (fire button, alternative fire button
+or tap the screen).
+
+### Menus
+
+The game's menus can be used with buttons too: the d-pad or left stick moves a highlight over the
+buttons, Cross presses the highlighted one, Left/Right move sliders and Circle (or Start) goes back.
+Touching the screen hides the highlight; the next d-pad press brings it back.
+
+### PS Vita controls & camera menu
+
+Press **Start + Select** while hunting (the hunt is paused underneath), or **Select** in any of the
+game's menus. From there:
+
+- Remap every action: Cross replaces the buttons of the highlighted action, Square adds one more,
+  Triangle leaves it unbound. A button can only belong to one action, so it is taken off the
+  previous one. Rear touch quadrants count as buttons.
+- Camera: right stick speed, invert up/down, invert left/right, swap sticks (left = camera).
+- Opacity of the touch HUD buttons.
+- Restore defaults.
+
+Circle saves and closes. Bindings go to `ux0:data/carnivoresdinosaurhunter/controls.txt`, the rest to
+`config.txt`; both can also be edited by hand:
+
+```ini
+VERSION = 2
+FIRE = R1
+JUMP = CROSS
+WEAPON = SQUARE
+NEXT_WEAPON = TRIANGLE
+WEAPON_MENU = LEFT
+BINOCULARS = L1
+CALL = CIRCLE, UP
+MAP = DOWN, SELECT
+ZOOM_IN = RIGHT
+ZOOM_OUT = NONE
+```
+
+Buttons: `CROSS`, `CIRCLE`, `SQUARE`, `TRIANGLE`, `L1`, `R1`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `SELECT`,
+rear touch `L2` (top-left), `R2` (top-right), `L3` (bottom-left), `R3` (bottom-right), and `NONE`.
+`BUTTON = ACTION` lines work too. A `controls.txt` from an older version (without `VERSION = 2`) is
+replaced by the defaults.
 
 While hunting, the touch HUD buttons (move stick, fire, alternative fire, weapon, binoculars, call,
 map, pause and the photo mode buttons) are drawn at 1% opacity, since the physical controls replace
 them. They still respond to touch where they normally are. The compass and the menus keep their
-normal look. Change it with `hud_opacity` (100 = original look).
+normal look.
+
+## Trophies (PS Vita System Integration)
+
+The port integrates native PS Vita system trophies via `sceNpTrophy`.
+When achievements are earned in-game, the official PlayStation Vita trophy notification pops up with the system sound and records progress into the console's Trophies application.
+- Requires the `NoTrpDrm` plugin by Rinnegatamante to enable homebrew trophy support.
+- If `NoTrpDrm` or a trophy pack is not installed, the game gracefully falls back and continues running without issues.
+
+## Offline Optimizations & UI Cleanup
+
+All network and Facebook sharing elements ("Share statistics to Facebook", "Share trophy to Facebook", "Share hunt to Facebook", and Facebook login/logout buttons) have been completely removed and disabled from menus, trophy rooms, and score screens. Functions related to social feeds and network posting are safely no-oped, keeping the interface clean and preventing zombie stalls.
 
 ## Options
 
@@ -58,7 +115,9 @@ normal look. Change it with `hud_opacity` (100 = original look).
 | Key | Default | Meaning |
 |---|---|---|
 | `look_sensitivity` | `100` | Right stick camera speed in percent (10–400). Frame-rate independent; stacks with the in-game sensitivity slider |
-| `invert_look_y` | `0` | Invert right stick vertical axis |
+| `invert_look_y` | `0` | Invert the camera's vertical axis |
+| `invert_look_x` | `0` | Invert the camera's horizontal axis |
+| `swap_sticks` | `0` | 1: left stick looks, right stick moves |
 | `msaa` | `0` | Anti-aliasing: 0 off (fastest), 1 2x, 2 4x |
 | `engine_log` | `0` | Write the game's own debug messages to the log (slow: several lines per asset while loading) |
 | `hud_opacity` | `1` | Opacity of the touch HUD buttons while hunting, in percent (0–100; 100 = original). The compass is not affected |

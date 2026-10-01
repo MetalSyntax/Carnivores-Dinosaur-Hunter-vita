@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "utils/logger.h"
+#include "utils/trophy.h"
 
 enum {
     METHOD_OPEN_MORE_GAMES = 10,
@@ -109,6 +110,7 @@ static void cb_SendFlurryEvent(jmethodID id, va_list args) {
 static void cb_unlockAchievement(jmethodID id, va_list args) {
     jint achId = va_arg(args, jint);
     l_info("JNI: unlockAchievement(%d)", (int)achId);
+    trophy_unlock((uint32_t)achId + 1);
 }
 
 static void cb_openAchievements(jmethodID id, va_list args) {

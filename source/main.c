@@ -5,6 +5,7 @@
 #include "utils/dialog.h"
 #include "reimpl/audio.h"
 #include "input.h"
+#include "utils/trophy.h"
 
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/kernel/processmgr.h>
@@ -110,6 +111,9 @@ int main(int argc, char *argv[]) {
     gl_init();
     l_success("OpenGL initialized.");
 
+    // Initialize trophies (requires NoTrpDrm + trophy pack in ux0:app/PSVCDH001/sce_sys/trophy/)
+    trophy_init();
+
 
     // Call game initialization callbacks
     if (facebook_nativeInit) facebook_nativeInit(&jni, (jobject)0x1);
@@ -174,6 +178,7 @@ int main(int argc, char *argv[]) {
         gl_swap();
     }
 
+    trophy_term();
     audio_term();
     sceKernelExitDeleteThread(0);
     return 0;

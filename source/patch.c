@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "input.h"
+#include "overlay.h"
 #include "reimpl/softfloat.h"
 #include "utils/logger.h"
 #include "utils/settings.h"
@@ -110,6 +111,83 @@ static void *zip_open_dbg(const char *path, int flags, int *zep) {
 }
 #endif
 
+// Facebook is gone on Vita (no network, no SDK): its buttons are never shown
+// and its functions do nothing.
+static int *fb_ctrl_hunt;
+static int *fb_ctrl_stats;
+static int *fb_ctrl_trophy_stat;
+static int *fb_ctrl_trophy;
+static int *fb_ctrl_login;
+static uint8_t *gui_controls;
+static int *gui_controls_count;
+
+static int is_facebook_control(int idx) {
+    if (idx < 0) return 0;
+    if (fb_ctrl_hunt && *fb_ctrl_hunt == idx) return 1;
+    if (fb_ctrl_stats && *fb_ctrl_stats == idx) return 1;
+    if (fb_ctrl_trophy_stat && *fb_ctrl_trophy_stat == idx) return 1;
+    if (fb_ctrl_trophy && *fb_ctrl_trophy == idx) return 1;
+    if (fb_ctrl_login && *fb_ctrl_login == idx) return 1;
+    return 0;
+}
+
+// GUI_SetControlActive/Visible(int, bool), reimplemented 1:1 from the
+// pseudo-C (bounds check, then the byte at +0x32 / +0x33 of the 0x180-byte
+// control) instead of SO_CONTINUE: the engine calls them dozens of times per
+// frame, and every SO_CONTINUE rewrites the code and flushes the cache twice.
+static void set_control_flag(int idx, int offset, int value) {
+    if (idx < 0 || idx >= *gui_controls_count)
+        return;
+    gui_controls[idx * 0x180 + offset] = is_facebook_control(idx) ? 0 : (value != 0);
+}
+
+static void GUI_SetControlActive_hook(int idx, int active) {
+    set_control_flag(idx, 0x32, active);
+}
+
+static void GUI_SetControlVisible_hook(int idx, int visible) {
+    set_control_flag(idx, 0x33, visible);
+}
+
+static void facebook_noop(void) {}
+
+static void patch_facebook_elements(void) {
+    fb_ctrl_hunt        = (int *) so_symbol(&so_mod, "game_share_hunt_statistic_with_facebook");
+    fb_ctrl_stats       = (int *) so_symbol(&so_mod, "game_share_statistics_with_facebook");
+    fb_ctrl_trophy_stat = (int *) so_symbol(&so_mod, "game_share_trophy_statistic_with_facebook");
+    fb_ctrl_trophy      = (int *) so_symbol(&so_mod, "game_share_trophy_with_facebook");
+    fb_ctrl_login       = (int *) so_symbol(&so_mod, "menu_options_facebook_login");
+    gui_controls        = (uint8_t *) so_symbol(&so_mod, "gui_controls");
+    gui_controls_count  = (int *) so_symbol(&so_mod, "gui_controls_count");
+
+    uintptr_t fn_vis = so_symbol(&so_mod, "_Z21GUI_SetControlVisibleib");
+    uintptr_t fn_act = so_symbol(&so_mod, "_Z20GUI_SetControlActiveib");
+    if (gui_controls && gui_controls_count && fn_vis && fn_act) {
+        hook_addr(fn_vis, (uintptr_t) &GUI_SetControlVisible_hook);
+        hook_addr(fn_act, (uintptr_t) &GUI_SetControlActive_hook);
+    } else {
+        l_error("patch: GUI_SetControlVisible/Active not hooked, Facebook buttons may show");
+    }
+
+    // All return void and their results are never used (pseudo-C ~20274,
+    // ~21369).
+    const char *fb_funcs[] = {
+        "_Z14Facebook_Loginv",
+        "_Z15Facebook_Logoutv",
+        "_Z20Facebook_PublishFeedPcS_",
+        "_Z22Facebook_PublishTrophyi",
+        "_Z25Facebook_PublishStatistici",
+        "_Z29Facebook_PublishHuntStatisticv",
+        "_Z31Facebook_PublishTrophyStatisticv",
+    };
+    for (unsigned i = 0; i < sizeof(fb_funcs) / sizeof(fb_funcs[0]); i++) {
+        uintptr_t fn = so_symbol(&so_mod, fb_funcs[i]);
+        if (fn)
+            hook_addr(fn, (uintptr_t) &facebook_noop);
+    }
+    l_success("patch: Facebook sharing and login controls disabled.");
+}
+
 void so_patch(void) {
     // Soft-float emulation -> VFP (the biggest CPU cost of an armeabi .so).
     if (setting_vfpFloat)
@@ -131,4 +209,10 @@ void so_patch(void) {
 
     // Right stick camera: feed the stick into the engine's own camera input.
     input_patch();
+
+    // Facebook elements: disabled and suppressed for offline PS Vita environment.
+    patch_facebook_elements();
+
+    // Port UI (controls/camera menu, menu cursor) drawn with the game's fonts.
+    overlay_patch();
 }

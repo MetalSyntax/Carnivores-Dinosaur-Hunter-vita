@@ -48,20 +48,29 @@ menus, map loading and hunting in the 3D maps, with FMOD sound.**
 | Touch screen | Original touch controls |
 | Left stick | Move |
 | Right stick | Look (frame-rate independent) |
-| R / Cross | Fire |
-| L | Alternative fire |
-| Square | Switch weapon |
-| Triangle | Binoculars |
+| R | Fire (draws a holstered weapon first) / take photo |
+| Cross | Jump |
+| Square | Draw / holster weapon |
+| Triangle | Next weapon |
+| L | Binoculars |
 | Circle / D-pad up | Call |
 | Select / D-pad down | Map |
+| D-pad left / right | Weapon list / photo zoom in |
 | Start | Pause / back |
+| Start + Select | PS Vita controls & camera menu (Select alone in menus) |
 
-Buttons press the game's own HUD controls, so each one acts only while its control is on screen.
-Same mapping as the Carnivores: Ice Age Vita port.
+- Every action can be remapped in game (Start + Select), including the rear touch quadrants.
+  Camera options there too: speed, invert up/down and left/right, swap sticks.
+- The game's menus work with buttons: d-pad / left stick to move, Cross to press, Left/Right on
+  sliders, Circle to go back.
+- Fire works with every "firing method" of the game's options.
+- Facebook buttons are hidden and its functions disabled.
 
 ## Options
 
-Edit `ux0:data/carnivoresdinosaurhunter/config.txt`: `look_sensitivity` (10–400), `invert_look_y`,
+Most are in the in-game menu (Start + Select). By hand, in
+`ux0:data/carnivoresdinosaurhunter/config.txt`: `look_sensitivity` (10–400), `invert_look_y`,
+`invert_look_x`, `swap_sticks`,
 `msaa` (0 off / 1 2x / 2 4x), `hud_opacity` (0–100, default 1), `engine_log`, `vfp_float`. See the README for details.
 
 ## Under the hood

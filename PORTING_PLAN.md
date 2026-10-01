@@ -66,6 +66,10 @@
 - [x] Pruebas en hardware real: menú, carga de mapas y caza confirmados (logs 008/009 + build 13:09).
 - [x] Confirmado en consola (2026-09-30, reporte del usuario): arranque con partida guardada (Bug #5) y packs de contenido.
 - [x] HUD táctil al 1 % (`hud_opacity`), menos la brújula (ver §8).
+- [x] Trofeos nativos de PS Vita integrados (`source/utils/trophy.c`, `source/utils/trophy.h`, `sceNpTrophy` asíncrono vía `unlockAchievement` JNI).
+- [x] Controles personalizables (`controls.txt` en `ux0:data/...`, botones físicos y panel trasero L2/R2/L3/R3, compatibilidad con PhotoMode).
+- [x] Menú in-game de controles y cámara (START+SELECT), disparo con cualquier `firing_method`, navegación de menús con botones (§10). Pendiente de prueba en consola.
+- [x] Desactivación completa de elementos de Facebook (HUD, menús y sala de trofeos limpios, funciones sociales en no-op).
 - [ ] Sesión larga: confirmar que ya no crashea FMOD por un sonido faltante (Bug #4) y probar el HUD al 1 %.
 - [ ] Medir FPS en 3D; investigar los `FMOD error 'An invalid parameter'` de `Sounds_AddSound` (logs 003/009).
 
@@ -100,3 +104,50 @@ El log del juego vive en `<DATA_PATH>logs/carnivoresdinosaurhunter_NNN.log`, inc
 - Controles: `game_movement_controller`, `game_fire`, `game_alternative_fire`, `game_weapon`, `game_binoculars`, `game_call`, `game_map`, `game_menu`, `game_photomode_shot/zoom_in/zoom_out` (creados en `Menu_Init`, ~22380-22726). Los menús no se tocan.
 - La brújula no es un control GUI: es el modelo `compas.3dn` con `compas.tga` (~26164-26254), así que no le afecta. Tampoco a los sprites que se dibujan aparte del control (círculo y ondas de la llamada, barra de vida).
 - `hud_opacity 100` desactiva el hook.
+
+## 9. Integración de Trofeos del Sistema (PS Vita Native Trophies)
+
+- Submódulo nativo en `source/utils/trophy.c` y `source/utils/trophy.h` interactuando con `sceNpTrophy` (`SceNpTrophy_stub`).
+- Inicialización en `main.c` con el Title ID (`PSVCDH001`), despliegue del diálogo oficial de configuración de trofeos y obtención del estado inicial de desbloqueos (`sceNpTrophyGetTrophyUnlockState`).
+- Desbloqueo asíncrono y no-bloqueante: cola circular con semáforo atendida por un hilo dedicado (`trophies_unlocker`) para que `sceNpTrophyUnlockTrophy` jamás genere micro-stutters durante el gameplay.
+- Conexión con el callback JNI: `SocialUtils.unlockAchievement(id)` en `source/java.c` invoca directamente `trophy_unlock(id + 1)` (índices 1-based del archivo TRP).
+- Compatibilidad segura: si la consola no cuenta con el plugin `NoTrpDrm` o no se encuentra el paquete TRP en `sce_sys/trophy/`, la inicialización falla limpiamente marcando `trophies_available = 0`, permitiendo jugar con total normalidad.
+
+## 10. Controles: acciones, menú "PS Vita controls & camera" y navegación de menús
+
+- **Disparo (bug real del feedback):** con el `firing_method` por defecto (1, pseudo-C ~18820) el
+  motor oculta `game_fire` y dispara con `game_alternative_fire` (~20676-20735); con 0 no hay botón y
+  se dispara con un toque rápido (`quick_touch`, ~20875). El mapeo v1 mandaba R/✕ a `game_fire`, que
+  nunca estaba activo. `FIRE` ahora: shutter de foto → `game_fire`/`game_alternative_fire` visible →
+  si el arma está enfundada (`weapons[cur*0x84+0x3C] == 0`) `Weapon_TakeWeapon()` → con método 0
+  `Weapon_Fire()` (solo dispara en estado 1).
+- **Armas sin la lista táctil:** tocar `game_weapon` alterna el arma Y abre la lista (subgrupo 8).
+  `WEAPON` llama `Weapon_TakeWeapon()` (toggle), `NEXT_WEAPON` hace lo mismo que elegir de la lista
+  (`Weapon_ChangeCurrentWeapon()` + `game_menu_show_photomode`). `JUMP` pone `quick_touch = 1`.
+- **HUD activo** = `game_movement_controller` (0x4025) o `game_menu` (0x4825, cubre arcade 0x800).
+  Pausa es el subgrupo 0x400 (`EAGLView::OnBackPressed`/`pauseGame`), así que ahí rige la navegación.
+- **Navegación de menús:** cursor sobre `gui_controls[]` del grupo activo (tipo +0x08: 0 botón,
+  1 slider, 2 stick), búsqueda direccional por centros; ✕ mantiene un toque sintético sobre el
+  control, ←/→ en sliders llama `GUI_SetSliderValue()` (el menú de opciones relee
+  `GUI_GetSliderValue()` cada frame, ~20439), ◯ = `nativeOnBackPressed`.
+- **Overlay:** `source/overlay.c` engancha `Font_Render()`: deja que el motor dibuje su texto, dibuja
+  rectángulos propios y encola texto con `Font_PrintText(x, y, scale, color 0xAABBGGRR, text, flags,
+  font)` (flags 1 derecha, 2 centro H, 4 centro V; `#n` es código de color) y vuelve a llamar a
+  `Font_Render()`. Fuentes cargadas por el motor: `ccra14`, `lith18`, `ofs13`, `ofs15`.
+- **Menú** (`source/vita_menu.c`): START+SELECT (SELECT solo en menús). En juego primero pausa con
+  `nativeOnBackPressed`. START "atrás" se manda al soltar, para que el combo no pause además.
+- **Archivos:** `controls.txt` con `VERSION = 2` (uno sin versión se reemplaza por los defaults),
+  `config.txt` suma `invert_look_x` y `swap_sticks`.
+- Panel trasero: cuadrantes `L2`/`R2`/`L3`/`R3` como botones extra.
+
+## 11. Desactivación de Elementos y Funciones de Facebook
+
+- Supresión de botones en runtime: `source/patch.c` reemplaza `_Z21GUI_SetControlVisibleib` y `_Z20GUI_SetControlActiveib` por reimplementaciones 1:1 (byte +0x33 / +0x32 del control) que fuerzan 0 en los controles de Facebook. Sin `SO_CONTINUE`: el motor las llama decenas de veces por frame y cada `SO_CONTINUE` reescribe código y vacía la caché dos veces:
+  - `game_share_hunt_statistic_with_facebook`
+  - `game_share_statistics_with_facebook`
+  - `game_share_trophy_statistic_with_facebook`
+  - `game_share_trophy_with_facebook`
+  - `menu_options_facebook_login`
+- Refuerzo en HUD y eventos: `source/input.c` reasigna coordenadas a `-9999.0f` y dimensiones a `0.0f` antes de cada dibujado de controles y en cada frame de input (`hide_social_controls()`).
+- No-op de funciones sociales: `Facebook_Login`, `Facebook_Logout`, `Facebook_PublishFeed`, `Facebook_PublishTrophy`, `Facebook_PublishStatistic`, `Facebook_PublishHuntStatistic`, `Facebook_PublishTrophyStatistic` hookeadas a `facebook_noop()`, evitando llamadas huérfanas a la capa de red o FalsoJNI.
+

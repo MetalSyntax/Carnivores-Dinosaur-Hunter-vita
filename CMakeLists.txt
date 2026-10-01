@@ -108,6 +108,8 @@ add_executable(${CMAKE_PROJECT_NAME}
                source/java.c
                source/patch.c
                source/input.c
+               source/overlay.c
+               source/vita_menu.c
                source/reimpl/bits/_ctype.c
                source/reimpl/errno.c
                source/reimpl/io.c
@@ -124,6 +126,7 @@ add_executable(${CMAKE_PROJECT_NAME}
                source/utils/init.c
                source/utils/logger.c
                source/utils/settings.c
+               source/utils/trophy.c
                source/utils/utils.c
                lib/falso_jni/FalsoJNI.c
                lib/falso_jni/FalsoJNI_ImplBridge.c
@@ -174,6 +177,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       ScePower_stub
                       SceTouch_stub
                       SceVshBridge_stub
+                      SceNpTrophy_stub
+                      SceSysmodule_stub
                       )
 
 add_dependencies(${CMAKE_PROJECT_NAME} vitaGL_lib)
