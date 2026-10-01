@@ -8,8 +8,9 @@ so-loader port of the Android version (1.3.1) of *Carnivores: Dinosaur Hunter* (
 It runs the original `libdinHunter.so` + `libfmodex.so` with an emulated Java layer (FalsoJNI).
 You need your own copy of the game APK; nothing from the game is distributed here.
 
-> Status: menus and hunting (3D maps) run on real hardware. See [`RELEASE.md`](RELEASE.md) and
-> `port_progress.md`.
+> Status: menus and hunting (3D maps) run on real hardware (v1.0.0). v1.1.0 adds the controls &
+> camera menu and button navigation, not yet confirmed on hardware. See [`RELEASE.md`](RELEASE.md)
+> and `port_progress.md`.
 
 ## Install
 
@@ -27,6 +28,11 @@ Content packs (optional): on Android they are separate apps. Copy their APKs to 
   crossbow) as `bundle2.apk`
 
 A pack is unlocked only when its APK is present; without it, its maps and weapons stay locked.
+
+Only the Android **1.3.1** APK (`com.tatem.dinhunter`) works. The HD version
+(`com.tatem.dinhunterhd`, 1.6.5) and its OBB (`main.423.com.tatem.dinhunterhd.obb`) are a different,
+OpenGL ES 2 engine with another asset layout (`Common/`, `DinHunter/`) and formats (`.cat`, `.rst`,
+`.pkm`, shaders); this loader can't use them, and the 1.3.1 engine never opens an OBB.
 
 ## Controls
 
@@ -56,6 +62,8 @@ or tap the screen).
 
 The game's menus can be used with buttons too: the d-pad or left stick moves a highlight over the
 buttons, Cross presses the highlighted one, Left/Right move sliders and Circle (or Start) goes back.
+The highlight is fitted to what each item looks like on screen (sprite, text, slider knob), and the
+hunt menu's area / dinosaur / weapon cells are included.
 Touching the screen hides the highlight; the next d-pad press brings it back.
 
 ### PS Vita controls & camera menu
@@ -97,16 +105,17 @@ map, pause and the photo mode buttons) are drawn at 1% opacity, since the physic
 them. They still respond to touch where they normally are. The compass and the menus keep their
 normal look.
 
-## Trophies (PS Vita System Integration)
+## Trophies (experimental)
 
-The port integrates native PS Vita system trophies via `sceNpTrophy`.
-When achievements are earned in-game, the official PlayStation Vita trophy notification pops up with the system sound and records progress into the console's Trophies application.
-- Requires the `NoTrpDrm` plugin by Rinnegatamante to enable homebrew trophy support.
-- If `NoTrpDrm` or a trophy pack is not installed, the game gracefully falls back and continues running without issues.
+`source/utils/trophy.c` maps the game's achievements to PS Vita trophies through `sceNpTrophy`
+(needs the NoTrpDrm plugin). No trophy pack (`sce_sys/trophy/`) is included in the VPK, so in
+released builds trophy setup fails at boot and trophies stay disabled; the game runs normally.
 
-## Offline Optimizations & UI Cleanup
+## Offline cleanup
 
-All network and Facebook sharing elements ("Share statistics to Facebook", "Share trophy to Facebook", "Share hunt to Facebook", and Facebook login/logout buttons) have been completely removed and disabled from menus, trophy rooms, and score screens. Functions related to social feeds and network posting are safely no-oped, keeping the interface clean and preventing zombie stalls.
+There is no network on Vita, so every Facebook element ("share hunt / statistics / trophy" and
+login / logout) is hidden from the menus, trophy room and score screens, and the Facebook functions
+do nothing.
 
 ## Options
 
