@@ -8,8 +8,9 @@ so-loader port of the Android version (1.3.1) of *Carnivores: Dinosaur Hunter* (
 It runs the original `libdinHunter.so` + `libfmodex.so` with an emulated Java layer (FalsoJNI).
 You need your own copy of the game APK; nothing from the game is distributed here.
 
-> Status: menus and hunting (3D maps) run on real hardware. See [`RELEASE.md`](RELEASE.md) and
-> `port_progress.md`.
+> Status: menus and hunting (3D maps) run on real hardware (v1.0.0). v1.1.0 adds the controls &
+> camera menu and button navigation, not yet confirmed on hardware. See [`RELEASE.md`](RELEASE.md)
+> and `port_progress.md`.
 
 ## Install
 
@@ -28,28 +29,93 @@ Content packs (optional): on Android they are separate apps. Copy their APKs to 
 
 A pack is unlocked only when its APK is present; without it, its maps and weapons stay locked.
 
+Only the Android **1.3.1** APK (`com.tatem.dinhunter`) works. The HD version
+(`com.tatem.dinhunterhd`, 1.6.5) and its OBB (`main.423.com.tatem.dinhunterhd.obb`) are a different,
+OpenGL ES 2 engine with another asset layout (`Common/`, `DinHunter/`) and formats (`.cat`, `.rst`,
+`.pkm`, shaders); this loader can't use them, and the 1.3.1 engine never opens an OBB.
+
 ## Controls
+
+### Default controls
 
 | Vita | Action |
 |---|---|
 | Touch screen | Original touch controls |
 | Left stick | Move |
-| Right stick | Look |
-| R / Cross | Fire |
-| L | Alternative fire |
-| Square | Switch weapon |
-| Triangle | Binoculars |
-| D-pad up | Call |
+| Right stick | Look / aim |
+| R | Fire (draws the weapon first if it is holstered) / take photo |
+| Cross | Jump |
+| Square | Draw / holster weapon |
+| Triangle | Next weapon |
+| L | Binoculars |
+| Circle / D-pad up | Call dinosaurs |
 | Select / D-pad down | Map |
-| Start / Circle | Pause / back |
+| D-pad left | Weapon list (the HUD weapon button) |
+| D-pad right | Photo mode zoom in |
+| Start | Pause / back |
+| **Start + Select** | **PS Vita controls & camera menu** |
 
-The buttons press the game's own HUD controls, so they only act while that control is on screen
-(in menus, use the touch screen).
+Fire works with every "firing method" of the game's options (fire button, alternative fire button
+or tap the screen).
+
+### Menus
+
+The game's menus can be used with buttons too: the d-pad or left stick moves a highlight over the
+buttons, Cross presses the highlighted one, Left/Right move sliders and Circle (or Start) goes back.
+The highlight is fitted to what each item looks like on screen (sprite, text, slider knob), and the
+hunt menu's area / dinosaur / weapon cells are included.
+Touching the screen hides the highlight; the next d-pad press brings it back.
+
+### PS Vita controls & camera menu
+
+Press **Start + Select** while hunting (the hunt is paused underneath), or **Select** in any of the
+game's menus. From there:
+
+- Remap every action: Cross replaces the buttons of the highlighted action, Square adds one more,
+  Triangle leaves it unbound. A button can only belong to one action, so it is taken off the
+  previous one. Rear touch quadrants count as buttons.
+- Camera: right stick speed, invert up/down, invert left/right, swap sticks (left = camera).
+- Opacity of the touch HUD buttons.
+- Restore defaults.
+
+Circle saves and closes. Bindings go to `ux0:data/carnivoresdinosaurhunter/controls.txt`, the rest to
+`config.txt`; both can also be edited by hand:
+
+```ini
+VERSION = 2
+FIRE = R1
+JUMP = CROSS
+WEAPON = SQUARE
+NEXT_WEAPON = TRIANGLE
+WEAPON_MENU = LEFT
+BINOCULARS = L1
+CALL = CIRCLE, UP
+MAP = DOWN, SELECT
+ZOOM_IN = RIGHT
+ZOOM_OUT = NONE
+```
+
+Buttons: `CROSS`, `CIRCLE`, `SQUARE`, `TRIANGLE`, `L1`, `R1`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `SELECT`,
+rear touch `L2` (top-left), `R2` (top-right), `L3` (bottom-left), `R3` (bottom-right), and `NONE`.
+`BUTTON = ACTION` lines work too. A `controls.txt` from an older version (without `VERSION = 2`) is
+replaced by the defaults.
 
 While hunting, the touch HUD buttons (move stick, fire, alternative fire, weapon, binoculars, call,
 map, pause and the photo mode buttons) are drawn at 1% opacity, since the physical controls replace
 them. They still respond to touch where they normally are. The compass and the menus keep their
-normal look. Change it with `hud_opacity` (100 = original look).
+normal look.
+
+## Trophies (experimental)
+
+`source/utils/trophy.c` maps the game's achievements to PS Vita trophies through `sceNpTrophy`
+(needs the NoTrpDrm plugin). No trophy pack (`sce_sys/trophy/`) is included in the VPK, so in
+released builds trophy setup fails at boot and trophies stay disabled; the game runs normally.
+
+## Offline cleanup
+
+There is no network on Vita, so every Facebook element ("share hunt / statistics / trophy" and
+login / logout) is hidden from the menus, trophy room and score screens, and the Facebook functions
+do nothing.
 
 ## Options
 
@@ -58,7 +124,9 @@ normal look. Change it with `hud_opacity` (100 = original look).
 | Key | Default | Meaning |
 |---|---|---|
 | `look_sensitivity` | `100` | Right stick camera speed in percent (10–400). Frame-rate independent; stacks with the in-game sensitivity slider |
-| `invert_look_y` | `0` | Invert right stick vertical axis |
+| `invert_look_y` | `0` | Invert the camera's vertical axis |
+| `invert_look_x` | `0` | Invert the camera's horizontal axis |
+| `swap_sticks` | `0` | 1: left stick looks, right stick moves |
 | `msaa` | `0` | Anti-aliasing: 0 off (fastest), 1 2x, 2 4x |
 | `engine_log` | `0` | Write the game's own debug messages to the log (slow: several lines per asset while loading) |
 | `hud_opacity` | `1` | Opacity of the touch HUD buttons while hunting, in percent (0–100; 100 = original). The compass is not affected |

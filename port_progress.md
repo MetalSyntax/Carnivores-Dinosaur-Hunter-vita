@@ -374,3 +374,64 @@ El port está 100% implementado, enlazado y empaquetado. El único paso pendient
 - **Build:** Release 17:20 (`psvita-toolkit build --preset release --clean` + `clean-junk`).
   Verificado en el ELF: `GUI_DrawControls_hook`, parche de libzip, `sceGxmSetViewport_sfp`.
 - **Estado:** pendiente de prueba en consola.
+
+## ◯ llama a los animales (2026-09-30)
+
+- Igual que Carnivores-Ice-Age-vita: ◯ se suma a ↑ sobre `game_call`, y "atrás"
+  (`nativeOnBackPressed`) queda solo en Start. Reemplaza el "Start/◯ atrás" de la sección de
+  controles físicos. README y RELEASE.md actualizados.
+- **Estado:** compilado (Release), pendiente de prueba en consola.
+
+## Trofeos Nativos PS Vita, Controles Remapeables y Limpieza de Facebook (2026-10-01)
+
+- **Trofeos PS Vita:**
+  - Implementado `source/utils/trophy.c` y `source/utils/trophy.h` usando `sceNpTrophy` (`SceNpTrophy_stub` + `SceSysmodule_stub`).
+  - Hilo de trabajo asíncrono no-bloqueante (`trophies_unlocker`) con semáforo y cola circular para evitar stutters al desbloquear trofeos.
+  - Conectado a `SocialUtils.unlockAchievement` en `source/java.c` (`trophy_unlock(achId + 1)`).
+  - Manejo seguro de ausencia de `NoTrpDrm` o paquete TRP con degradación elegante (`trophies_available = 0`).
+- **Controles Personalizados:**
+  - Creador y parser de `ux0:data/carnivoresdinosaurhunter/controls.txt`.
+  - Soporte bidireccional (`ACTION = BOTON1, BOTON2` y `BOTON = ACCION`).
+  - Soporte para panel táctil trasero (`SCE_TOUCH_PORT_BACK`) con cuadrantes L2, R2, L3, R3.
+  - Integración transparente con PhotoMode (`game_photomode_shot`, `game_photomode_zoom_in`).
+- **Desactivación de Elementos de Facebook:**
+  - `patch.c`: Hook a `GUI_SetControlVisible` y `GUI_SetControlActive` forzando visibilidad 0 en todos los controles sociales.
+  - No-op a las funciones sociales del `.so`: `Facebook_Login`, `Facebook_Logout`, `Facebook_PublishFeed`, `Facebook_PublishTrophy`, etc.
+  - `input.c`: Rutina `hide_social_controls()` en cada frame y antes de dibujar el HUD para reubicar controles sociales fuera de pantalla (`x = -9999`, `w = 0, h = 0`).
+- **Estado:** Compilado exitosamente en `.vpk` y `eboot.bin`. Listo para pruebas en consola.
+
+## Feedback de usuario: remapeo in-game, disparo, menús con botones (2026-10-01)
+
+Feedback (tester): disparar es torpe (cuadrado para sacar el arma, triángulo para disparar), pide
+remapear, quitar Facebook y poder usar los menús con botones.
+
+- **Causa del disparo torpe:** la opción del juego `firing_method` vale 1 por defecto, y con 1 el
+  motor oculta `game_fire` y dispara con `game_alternative_fire` (pseudo-C ~20676). El mapeo v1
+  mandaba R/✕ a `game_fire`, siempre inactivo, así que solo disparaba L. Encima sacar el arma con
+  `game_weapon` abre también la lista de armas.
+- **Fix:** `FIRE` dispara con el control que esté visible, desenfunda con `Weapon_TakeWeapon()` si el
+  arma está guardada y usa `Weapon_Fire()` con el método 0 (tocar pantalla). Acciones nuevas:
+  `JUMP` (✕, `quick_touch`), `WEAPON` (desenfundar/enfundar), `NEXT_WEAPON`, `WEAPON_MENU`,
+  `ZOOM_IN/OUT`. `controls.txt` pasa a `VERSION = 2` y uno viejo se reemplaza por los defaults.
+- **Menú "PS Vita controls & camera"** (START+SELECT, o SELECT en menús): remapeo (✕ reemplazar,
+  □ agregar, △ quitar), velocidad de cámara, invertir X/Y, intercambiar sticks, opacidad del HUD.
+  Dibujado con las fuentes del motor desde un hook de `Font_Render()` (`source/overlay.c`).
+- **Menús con botones:** cursor sobre los controles activos, ✕ pulsa, ←/→ sliders, ◯ atrás.
+- **Facebook:** ya estaba deshabilitado; los hooks de `GUI_SetControlVisible/Active` usaban
+  `SO_CONTINUE` (4 llamadas al kernel + flush por llamada, decenas de llamadas por frame). Ahora son
+  reimplementaciones directas.
+- **Build:** Release 11:32 (`psvita-toolkit build --preset release`), sin warnings en los archivos
+  nuevos. En el ELF: `Font_Render_hook`, `vita_menu_draw`, `draw_overlay`,
+  `GUI_SetControlVisible_hook`, `sceGxmSetViewport_sfp`.
+- **Estado:** pendiente de prueba en consola. Lo más incierto sin hardware: posición/escala del
+  texto del overlay (formato de color y flags de `Font_PrintText` deducidos del pseudo-C).
+
+## Resaltado de menús ajustado a cada elemento (2026-10-01)
+
+- Pedido: que el recuadro del cursor en los menús y en el menú de caza se adapte a los elementos.
+- Antes usaba la zona táctil del control (`+0x1C/+0x20`), que no siempre coincide con lo dibujado:
+  sin flag 1 el sprite se centra en x, el texto tiene offset/escala propios, y las celdas del menú
+  de caza tienen la zona táctil 16 px arriba del hexágono.
+- Ahora `control_visual_rect()` replica `GUI_DrawControls()` (sprite, knob, texto) y el caso de las
+  celdas; la navegación direccional usa esos centros y salta lo que está fuera de pantalla.
+- **Build:** Release OK. **Estado:** pendiente de prueba en consola.

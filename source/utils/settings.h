@@ -22,6 +22,9 @@ extern "C" {
 /** Right analog stick camera speed, percent (10..400). */
 extern int  setting_lookSensitivity;
 extern bool setting_invertLookY;
+extern bool setting_invertLookX;
+/** Left stick looks and right stick moves. */
+extern bool setting_swapSticks;
 /** 0 off, 1 2x, 2 4x MSAA (GPU cost at 960x544 in the 3D scenes). */
 extern int  setting_msaa;
 /** Forward the engine's __android_log_* spam to the log file. */
