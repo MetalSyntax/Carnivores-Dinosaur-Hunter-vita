@@ -130,6 +130,13 @@ El log del juego vive en `<DATA_PATH>logs/carnivoresdinosaurhunter_NNN.log`, inc
   1 slider, 2 stick), búsqueda direccional por centros; ✕ mantiene un toque sintético sobre el
   control, ←/→ en sliders llama `GUI_SetSliderValue()` (el menú de opciones relee
   `GUI_GetSliderValue()` cada frame, ~20439), ◯ = `nativeOnBackPressed`.
+- **Resaltado ajustado a lo que se ve** (`control_visual_rect`): unión del sprite (tamaño de
+  `Sprites_GetSpriteSize` × escala, alineación de `Sprites_DrawSprite`: flag 1 borde izq., 2 borde
+  der., si no centrado; 8 borde inferior, si no centrado), knob de sliders y texto (offset
+  `+0x16C/+0x170`, escala `+0x68`). Celdas del menú de caza: controles invisibles de 90×68
+  (`Menu_GetCellButtonParams`) cuya zona táctil empieza 16 px arriba del hexágono
+  `menu_hunt_cell_empty` dibujado. La navegación usa esos mismos centros y descarta lo que está fuera
+  de pantalla. El toque sintético sigue yendo al centro de la zona táctil.
 - **Overlay:** `source/overlay.c` engancha `Font_Render()`: deja que el motor dibuje su texto, dibuja
   rectángulos propios y encola texto con `Font_PrintText(x, y, scale, color 0xAABBGGRR, text, flags,
   font)` (flags 1 derecha, 2 centro H, 4 centro V; `#n` es código de color) y vuelve a llamar a

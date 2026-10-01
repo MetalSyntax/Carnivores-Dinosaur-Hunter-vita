@@ -425,3 +425,13 @@ remapear, quitar Facebook y poder usar los menús con botones.
   `GUI_SetControlVisible_hook`, `sceGxmSetViewport_sfp`.
 - **Estado:** pendiente de prueba en consola. Lo más incierto sin hardware: posición/escala del
   texto del overlay (formato de color y flags de `Font_PrintText` deducidos del pseudo-C).
+
+## Resaltado de menús ajustado a cada elemento (2026-10-01)
+
+- Pedido: que el recuadro del cursor en los menús y en el menú de caza se adapte a los elementos.
+- Antes usaba la zona táctil del control (`+0x1C/+0x20`), que no siempre coincide con lo dibujado:
+  sin flag 1 el sprite se centra en x, el texto tiene offset/escala propios, y las celdas del menú
+  de caza tienen la zona táctil 16 px arriba del hexágono.
+- Ahora `control_visual_rect()` replica `GUI_DrawControls()` (sprite, knob, texto) y el caso de las
+  celdas; la navegación direccional usa esos centros y salta lo que está fuera de pantalla.
+- **Build:** Release OK. **Estado:** pendiente de prueba en consola.

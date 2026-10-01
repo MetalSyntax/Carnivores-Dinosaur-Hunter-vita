@@ -133,6 +133,8 @@ static void (*Weapon_TakeWeapon)(void);
 static void (*Weapon_Fire)(void);
 static void (*Weapon_ChangeCurrentWeapon)(int);
 static void (*GUI_SetSliderValue)(int, float);
+static void (*Sprites_GetSpriteSize)(void *sprite, float *size);
+static uint8_t *menu_hunt_cell_empty;
 
 typedef struct {
     int active;
@@ -725,12 +727,117 @@ static int nav_candidate(int idx) {
     // Full-screen tap catchers (photo gallery, ...) are not buttons.
     if (w * h > 0.6f * LOGICAL_W * LOGICAL_H)
         return 0;
-    return 1;
+    // Nothing that can't be seen (the hunt menu's other pages, ...).
+    float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
+    return cx >= 0.0f && cx <= LOGICAL_W && cy >= 0.0f && cy <= LOGICAL_H;
+}
+
+/* What the control looks like on screen, which is not always its touch
+ * rectangle. Mirrors GUI_DrawControls() (pseudo-C ~15865):
+ *  - sprite (+0x30) at +0x38, x scale (+0x2C), drawn by Sprites_DrawSprite()
+ *    with flags (ctl & 1) | (ctl & 2) | (ctl & 8 ? 0 : 8): 1 = left edge at x,
+ *    2 = right edge at x, neither = centered; 8 = bottom edge at y, else
+ *    centered. Without control flag 1 a sprite is centered on x while its
+ *    touch rectangle starts at x.
+ *  - slider (type 1): plus the knob sprite (+0x40) at x + (+0x14), y + (+0x18).
+ *  - text (+0x31, buttons only) at x + (+0x16C), y + (+0x170), font +0x48,
+ *    text +0x6C, font scale +0x68; Font_PrintText() flags 1 right (ctl 2),
+ *    2 h-center (ctl 4), 4 v-center (ctl 8). Its first line's top is
+ *    y + line height (y + half of it when v-centered).
+ *  - hunt menu cells (Menu_GetCellButtonParams, ~18835): invisible 90x68
+ *    buttons whose touch rectangle starts 16 px above the cell sprite the menu
+ *    draws there (menu_hunt_cell_empty, Render_Menu ~25140). */
+#define HUNT_CELL_W     90.0f
+#define HUNT_CELL_H     68.0f
+#define HUNT_CELL_DROP  16.0f
+
+typedef struct { float x0, y0, x1, y1; int set; } Box;
+
+static void box_add(Box *b, float x0, float y0, float x1, float y1) {
+    if (x1 <= x0 || y1 <= y0)
+        return;
+    if (!b->set) {
+        b->x0 = x0; b->y0 = y0; b->x1 = x1; b->y1 = y1;
+        b->set = 1;
+        return;
+    }
+    if (x0 < b->x0) b->x0 = x0;
+    if (y0 < b->y0) b->y0 = y0;
+    if (x1 > b->x1) b->x1 = x1;
+    if (y1 > b->y1) b->y1 = y1;
+}
+
+static int sprite_size(void *sprite, float *w, float *h) {
+    float size[2] = { 0.0f, 0.0f };
+    // Sprites_GetSpriteSize() leaves `size` untouched for an invalid handle.
+    if (Sprites_GetSpriteSize && sprite)
+        Sprites_GetSpriteSize(sprite, size);
+    *w = size[0];
+    *h = size[1];
+    return size[0] > 0.0f && size[1] > 0.0f;
+}
+
+static void box_add_sprite(Box *b, void *sprite, float x, float y, float scale, uint32_t sflags) {
+    float w, h;
+    if (!sprite_size(sprite, &w, &h))
+        return;
+    w *= scale;
+    h *= scale;
+    float x0 = (sflags & 1) ? x : (sflags & 2) ? x - w : x - w * 0.5f;
+    float y0 = (sflags & 8) ? y : (sflags & 4) ? y - h : y - h * 0.5f;
+    box_add(b, x0, y0, x0 + w, y0 + h);
+}
+
+static void control_visual_rect(int idx, float *x0, float *y0, float *x1, float *y1) {
+    uint8_t *c = control(idx);
+    float x = *(float *) (c + 0x0C), y = *(float *) (c + 0x10);
+    float scale = *(float *) (c + 0x2C);
+    uint32_t flags = *(uint32_t *) (c + 0x24);
+    int type = control_type(idx);
+    Box b = {0};
+
+    if (c[0x30]) {
+        uint32_t sflags = (flags & 3) | ((flags & 8) ? 0 : 8);
+        box_add_sprite(&b, c + 0x38, x, y, scale, sflags);
+        if (type == 1)
+            box_add_sprite(&b, c + 0x40, x + *(float *) (c + 0x14), y + *(float *) (c + 0x18),
+                           scale, sflags);
+    }
+
+    const char *text = (const char *) (c + 0x6C);
+    if (c[0x31] && type == 0 && text[0]) {
+        float fs = *(float *) (c + 0x68), tw, th, lh;
+        overlay_text_size(text, (const char *) (c + 0x48), &tw, &th);
+        overlay_text_size("A", (const char *) (c + 0x48), NULL, &lh);
+        tw *= fs; th *= fs; lh *= fs;
+        float tx = x + *(float *) (c + 0x16C), ty = y + *(float *) (c + 0x170);
+        float left = (flags & 2) ? tx - tw : (flags & 4) ? tx - tw * 0.5f : tx;
+        float top = (flags & 8) ? ty + lh * 0.5f : ty + lh;
+        box_add(&b, left, top - th, left + tw, top);
+    }
+
+    float hx0, hy0, hx1, hy1;
+    control_rect(idx, &hx0, &hy0, &hx1, &hy1);
+
+    if (!b.set && !c[0x30] && !c[0x31] && *(int *) c == 1 &&
+        fabsf(*(float *) (c + 0x1C) - HUNT_CELL_W) < 0.5f &&
+        fabsf(*(float *) (c + 0x20) - HUNT_CELL_H) < 0.5f) {
+        float w, h;
+        if (!sprite_size(menu_hunt_cell_empty, &w, &h)) {
+            w = HUNT_CELL_W;
+            h = HUNT_CELL_H + HUNT_CELL_DROP;
+        }
+        box_add(&b, hx0, hy0 - HUNT_CELL_DROP, hx0 + w, hy0 - HUNT_CELL_DROP + h);
+    }
+
+    if (!b.set)
+        box_add(&b, hx0, hy0, hx1, hy1);
+    *x0 = b.x0; *y0 = b.y0; *x1 = b.x1; *y1 = b.y1;
 }
 
 static void nav_center(int idx, float *cx, float *cy) {
     float x0, y0, x1, y1;
-    control_rect(idx, &x0, &y0, &x1, &y1);
+    control_visual_rect(idx, &x0, &y0, &x1, &y1);
     *cx = (x0 + x1) * 0.5f;
     *cy = (y0 + y1) * 0.5f;
 }
@@ -881,8 +988,9 @@ static void draw_overlay(void) {
 
     if (nav_visible && nav_sel >= 0 && nav_candidate(nav_sel)) {
         float x0, y0, x1, y1;
-        control_rect(nav_sel, &x0, &y0, &x1, &y1);
-        overlay_rect(x0, y0, x1, y1, nav_touch.active ? 0x5000c8ff : 0x2800c8ff);
+        control_visual_rect(nav_sel, &x0, &y0, &x1, &y1);
+        x0 -= 2.0f; y0 -= 2.0f; x1 += 2.0f; y1 += 2.0f;
+        overlay_rect(x0, y0, x1, y1, nav_touch.active ? 0x5000c8ff : 0x2000c8ff);
         overlay_frame(x0, y0, x1, y1, 1.5f, 0xff00c8ff);
     }
 
@@ -1227,6 +1335,8 @@ void input_init(void) {
     SYM(Weapon_Fire,                "_Z11Weapon_Firev");
     SYM(Weapon_ChangeCurrentWeapon, "_Z26Weapon_ChangeCurrentWeaponi");
     SYM(GUI_SetSliderValue,         "_Z18GUI_SetSliderValueif");
+    SYM(Sprites_GetSpriteSize,      "_Z21Sprites_GetSpriteSizeP14_SpriteHandlerP9_Vector2D");
+    SYM(menu_hunt_cell_empty,       "menu_hunt_cell_empty");
 
     ctl_fb_hunt        = (int *) so_symbol(&so_mod, "game_share_hunt_statistic_with_facebook");
     ctl_fb_stats       = (int *) so_symbol(&so_mod, "game_share_statistics_with_facebook");
