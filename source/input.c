@@ -990,8 +990,23 @@ static void draw_overlay(void) {
         float x0, y0, x1, y1;
         control_visual_rect(nav_sel, &x0, &y0, &x1, &y1);
         x0 -= 2.0f; y0 -= 2.0f; x1 += 2.0f; y1 += 2.0f;
-        overlay_rect(x0, y0, x1, y1, nav_touch.active ? 0x5000c8ff : 0x2000c8ff);
-        overlay_frame(x0, y0, x1, y1, 1.5f, 0xff00c8ff);
+        // Corner brackets only, so the control itself stays readable; a faint
+        // fill while Cross is held is the "pressed" feedback.
+        const uint32_t col = 0xb4ffffff;
+        const float t = 1.5f;
+        float lx = (x1 - x0) * 0.25f, ly = (y1 - y0) * 0.25f;
+        if (lx > 10.0f) lx = 10.0f;
+        if (ly > 10.0f) ly = 10.0f;
+        if (nav_touch.active)
+            overlay_rect(x0, y0, x1, y1, 0x28ffffff);
+        overlay_rect(x0 - t, y0 - t, x0 + lx, y0, col);   // top-left
+        overlay_rect(x0 - t, y0, x0, y0 + ly, col);
+        overlay_rect(x1 - lx, y0 - t, x1 + t, y0, col);   // top-right
+        overlay_rect(x1, y0, x1 + t, y0 + ly, col);
+        overlay_rect(x0 - t, y1, x0 + lx, y1 + t, col);   // bottom-left
+        overlay_rect(x0 - t, y1 - ly, x0, y1, col);
+        overlay_rect(x1 - lx, y1, x1 + t, y1 + t, col);   // bottom-right
+        overlay_rect(x1, y1 - ly, x1 + t, y1, col);
     }
 
     if (sceKernelGetProcessTimeWide() < nav_hint_until) {
