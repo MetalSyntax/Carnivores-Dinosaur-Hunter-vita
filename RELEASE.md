@@ -1,46 +1,34 @@
-# Carnivores: Dinosaur Hunter — PS Vita · v1.1.0 "Controls overhaul"
+# Carnivores: Dinosaur Hunter — PS Vita · v1.2.0 "Trophies"
 
 > Paste the section below into the GitHub release description. The title above goes in the
-> release-title field; suggested tag: `v1.1.0`.
+> release-title field; suggested tag: `v1.2.0`.
 
 ---
 
-**Firing that works out of the box, an in-game menu to remap every button and tune the camera,
-and the whole game playable with buttons only, menus included.**
+**Native PS Vita trophies, and the game boots again with NoTrpDrm installed.**
 
-## What's new since v1.0.0
+## What's new since v1.1.0
 
-### Firing and weapons
-- **Fire works with every firing method.** The game's default firing method hides the fire button
-  that R/Cross were mapped to in v1.0.0, so only L fired. **R** now fires whichever fire button the
-  game shows, fires directly in "tap the screen" mode, and draws a holstered weapon first.
-- New actions: **jump** (Cross), **draw / holster** (Square), **next weapon** (Triangle),
-  **weapon list** (Left), **photo zoom in / out** (Right / unbound).
-- Circle calls dinosaurs (like D-pad up); Start alone is pause / back.
+### Trophies
+- **26 native PS Vita trophies**: the game's 25 awards (First Blood, T-Rex Hunter, William Tell,
+  Guru...) plus a Platinum. They install on first launch and unlock with the system notification.
+  Requires `NoTrpDrm.suprx` under `*main` in `ur0:tai/config.txt` (reboot after editing).
+- **Fixed: with NoTrpDrm installed the game didn't boot.** v1.0.0 and v1.1.0 shipped without a
+  trophy pack; with the plugin, the trophy setup step had nothing to install and never finished.
+  The pack now ships in the VPK, and trophy setup is skipped (the game boots without trophies) if
+  the pack is missing or setup takes longer than 30 seconds.
+- Without NoTrpDrm the game runs as before, with trophies off.
 
-### In-game "PS Vita controls & camera" menu
-Open it with **Start + Select** while hunting (the hunt pauses), or **Select** in the menus.
-- Remap every action, including the rear touch corners. Cross sets a button, Square adds a
-  second one, Triangle unbinds. A button belongs to one action at a time.
-- Camera: right stick speed, invert up/down, invert left/right, swap sticks.
-- Touch HUD opacity. Restore defaults.
-- Saved to `controls.txt` and `config.txt` on close (both still editable by hand).
-
-### Menus with buttons
-D-pad or left stick moves a highlight, Cross presses, Left/Right move sliders, Circle goes back.
-The highlight is fitted to what each item looks like on screen, and it works in the hunt menu
-(areas, dinosaurs, weapons). Touching the screen hides it; the next D-pad press brings it back.
-
-### Other
-- Facebook share / login buttons are hidden and their functions disabled (no network on Vita).
-- Small performance fix: showing or hiding GUI items no longer patches code on every call (the
-  game does it dozens of times per frame).
+### Menus
+- The button-navigation highlight is now four translucent white corner marks instead of a filled
+  yellow box that covered the item.
 
 ## Requirements
 
 - PS Vita / PS TV with HENkaku/Enso (3.60–3.74 with a kernel plugin loader).
 - `kubridge.skprx` in `*KERNEL` of your taiHEN config.
 - `libshacccg.suprx` in `ur0:data/` (use ShaRKBR33D).
+- Optional, for trophies: `NoTrpDrm.suprx` under `*main` in your taiHEN config.
 - Your own copy of the game APK (Android **1.3.1**, `com.tatem.dinhunter`, `armeabi`).
 
 Not compatible: **Carnivores: Dinosaur Hunter HD** (`com.tatem.dinhunterhd`, 1.6.5) and its OBB
@@ -49,8 +37,9 @@ asset layout and formats; this port can't use any of it.
 
 ## Install / upgrade
 
-1. Install `carnivoresdinosaurhunter.vpk` with VitaShell (over v1.0.0 is fine: saves and packs are
-   kept).
+1. Install `carnivoresdinosaurhunter.vpk` with VitaShell (over an earlier version is fine: saves and
+   packs are kept). Install the full VPK, not just `eboot.bin`: the trophy pack lives in
+   `sce_sys/`.
 2. Create `ux0:data/carnivoresdinosaurhunter/` and copy into it:
    - the APK, named `CarnivoresDinosaurHunter.apk`
    - `libdinHunter.so` and `libfmodex.so` from the APK's `lib/armeabi/`
@@ -132,12 +121,15 @@ Performance work:
 
 ## Known issues
 
-- **New in v1.1.0 and not yet confirmed on hardware:** the new fire/weapon actions, jump, the
-  controls & camera menu (text placement and size), button navigation and its highlight. Please
-  report anything that looks off, with a screenshot if you can.
+- **Black screen while trophies install (first launch with NoTrpDrm).** The screen stays black for
+  a while with no progress indicator before the game starts. Don't close the game or turn the
+  console off during this step. A loading screen for it is planned.
+- **Frame rate:** 20–30 FPS has been reported while hunting, dropping when dinosaurs are on screen.
+  Not fixed yet; it needs profiling on hardware first.
+- Trophy unlocks and the Platinum have not yet been checked one by one on hardware; please report
+  any award that shows in game but doesn't pop the trophy.
 - The first load is a ~30 s static screen with no progress indicator.
 - Many `FMOD error 'An invalid parameter...'` messages while loading dinosaur sounds. They don't
   crash, but some sounds may be missing.
 - The FMOD missing-sound fix has not been through a very long session yet.
 - Exiting is done from the PS button (the Android "Exit?" dialog from the main menu is skipped).
-- PS Vita trophies: code is in place but no trophy pack ships with the VPK, so they are disabled.

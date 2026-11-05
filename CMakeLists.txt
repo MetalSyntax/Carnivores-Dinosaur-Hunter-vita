@@ -51,7 +51,9 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Carnivores Dinosaur Hunter")
 set(VITA_TITLEID "PSVCDH001")
 set(VITA_VPKNAME "carnivoresdinosaurhunter")
-set(VITA_VERSION "01.00")
+set(VITA_VERSION "01.20")
+# NO NP_COMMUNICATION_ID on purpose: with it the trophy setup dialog fails on
+# real HW (see Prince of Persia port). trophy.c uses the bare "CRDH00001".
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
 
 # Optional: used for "send" and "dump" targets
@@ -198,6 +200,7 @@ vita_create_vpk(${VITA_VPKNAME}.vpk ${VITA_TITLEID} eboot.bin
                 ${CMAKE_SOURCE_DIR}/extras/livearea/startup.png sce_sys/livearea/contents/startup.png
                 ${CMAKE_SOURCE_DIR}/extras/livearea/bg0.png sce_sys/livearea/contents/bg0.png
                 ${CMAKE_SOURCE_DIR}/extras/livearea/template.xml sce_sys/livearea/contents/template.xml
+                ${CMAKE_SOURCE_DIR}/extras/trophy/CRDH00001_00/TROPHY.TRP sce_sys/trophy/CRDH00001_00/TROPHY.TRP
                 )
 
 add_custom_target(send

@@ -105,11 +105,19 @@ map, pause and the photo mode buttons) are drawn at 1% opacity, since the physic
 them. They still respond to touch where they normally are. The compass and the menus keep their
 normal look.
 
-## Trophies (experimental)
+## Trophies
 
-`source/utils/trophy.c` maps the game's achievements to PS Vita trophies through `sceNpTrophy`
-(needs the NoTrpDrm plugin). No trophy pack (`sce_sys/trophy/`) is included in the VPK, so in
-released builds trophy setup fails at boot and trophies stay disabled; the game runs normally.
+26 native PS Vita trophies (the game's 25 awards + Platinum), installed on first launch and shown
+with the system notification. Needs `NoTrpDrm.suprx` under `*main` in `ur0:tai/config.txt`
+(reboot after editing). Without the plugin the game runs normally with trophies off.
+
+The trophy pack ships in the VPK (`sce_sys/trophy/CRDH00001_00/TROPHY.TRP`) and is rebuilt with
+`python3 extras/scripts/generate_trophies.py` (needs the extracted APK for the icons). v1.0.0
+shipped without it, which made the game hang at boot when NoTrpDrm was installed.
+
+On the first launch with NoTrpDrm the screen stays black for a while as the trophies install, with
+no progress indicator. Don't close the game during this step (open issue: it needs a loading
+screen).
 
 ## Offline cleanup
 

@@ -26,7 +26,7 @@ extern "C" {
 int trophy_init(void);
 
 /**
- * @brief Unlock a trophy by ID (1-based index matching TRP definition).
+ * @brief Unlock a trophy by ID (1..25 = game award 0..24; 0 is the platinum, OS-only).
  * @param id Trophy index (1..N).
  */
 void trophy_unlock(uint32_t id);
@@ -37,11 +37,6 @@ void trophy_unlock(uint32_t id);
  * @return 1 if unlocked, 0 otherwise.
  */
 uint8_t trophy_is_unlocked(uint32_t id);
-
-/**
- * @brief Terminate PS Vita trophy subsystem and clean up resources.
- */
-void trophy_term(void);
 
 #ifdef __cplusplus
 };

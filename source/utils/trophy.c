@@ -7,31 +7,32 @@
 
 /**
  * @file  trophy.c
- * @brief PS Vita native trophy system integration via sceNpTrophy.
+ * @brief PS Vita native trophies via sceNpTrophy + NoTrpDrm.
+ *
+ * Same implementation as the Prince of Persia Classic port (v01.55, works on
+ * real HW):
+ * - comm_id is the bare 9-char base ("CRDH00001"); the TRP <npcommid> and the
+ *   VPK folder are "CRDH00001_00". param.sfo carries NO NP_COMMUNICATION_ID.
+ * - The TRP must be readable from app0: BEFORE any NP call. v1.0.0 shipped no
+ *   TRP: without NoTrpDrm CreateContext failed and the game went on, but with
+ *   NoTrpDrm it reached the setup dialog with nothing to install and never
+ *   booted.
+ * - One persistent handle; the cache bit is set only after the OS confirms.
+ * - Platinum (id 0) is never unlocked by hand: the OS does it.
  */
 
 #include "trophy.h"
 #include "logger.h"
 
 #include <psp2/kernel/threadmgr.h>
-#include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/clib.h>
+#include <psp2/io/fcntl.h>
 #include <psp2/sysmodule.h>
+#include <psp2/display.h>
 #include <psp2/common_dialog.h>
 
 #include <vitaGL.h>
-#include <stdio.h>
 #include <string.h>
-
-#define TROPHY_COMM_ID "PSVCDH001"
-#define TROPHY_QUEUE_SIZE 16
-
-static char comm_id[16] = TROPHY_COMM_ID;
-static char signature[160] = { 0xb9, 0xdd, 0xe1, 0x3b, 0x01, 0x00 };
-
-static int trp_ctx = -1;
-static int plat_id = -1;
-static int trophies_available = 0;
 
 typedef struct {
     int sdkVersion;
@@ -42,180 +43,180 @@ typedef struct {
 } SceNpTrophySetupDialogParam;
 
 typedef struct {
-    uint32_t unk[4];
-} SceNpTrophyUnlockState;
+    uint32_t bits[4]; // 128 trophies max
+} SceNpTrophyFlagArray;
 
-static SceNpTrophyUnlockState trophies_unlocks;
-
-// SceNpTrophy function prototypes
 int sceNpTrophyInit(void *unk);
-int sceNpTrophyTerm(void);
-int sceNpTrophyCreateContext(int *context, const char *commId, const char *commSign, uint64_t options);
-int sceNpTrophyDestroyContext(int context);
+int sceNpTrophyCreateContext(int *context, const char *commId, const void *commSign, uint64_t options);
 int sceNpTrophySetupDialogInit(SceNpTrophySetupDialogParam *param);
 SceCommonDialogStatus sceNpTrophySetupDialogGetStatus(void);
 int sceNpTrophySetupDialogTerm(void);
 int sceNpTrophyCreateHandle(int *handle);
 int sceNpTrophyDestroyHandle(int handle);
 int sceNpTrophyUnlockTrophy(int ctx, int handle, int id, int *plat_id);
-int sceNpTrophyGetTrophyUnlockState(int ctx, int handle, SceNpTrophyUnlockState *state, uint32_t *count);
+int sceNpTrophyGetTrophyUnlockState(int ctx, int handle, SceNpTrophyFlagArray *flags, uint32_t *count);
 
-// Asynchronous unlock queue
-static volatile int trp_queue[TROPHY_QUEUE_SIZE];
-static volatile int trp_q_head = 0;
-static volatile int trp_q_tail = 0;
+#define SCE_NP_TROPHY_ERROR_ALREADY_INITIALIZED     ((int)0x80551602)
+#define SCE_NP_TROPHY_ERROR_TROPHY_ALREADY_UNLOCKED ((int)0x8055160F)
+
+#define TRP_COMM_ID     "CRDH00001"
+#define TRP_PATH        "app0:sce_sys/trophy/" TRP_COMM_ID "_00/TROPHY.TRP"
+#define TRP_MAX         128
+#define TRP_QUEUE_SIZE  32
+// ponytail: safety cap only -- the real dialog finishes in ~1-2 s.
+#define TRP_DIALOG_MAX_FRAMES (60 * 30)
+
+static const char trp_comm_id[16] = TRP_COMM_ID;
+// Placeholder signature Rinnegatamante ships (NoTrpDrm skips the check).
+static const uint8_t trp_comm_sign[160] = { 0xb9, 0xdd, 0xe1, 0x3b, 0x01, 0x00 };
+
+static int trp_ctx = -1;
+static int trp_handle = -1;
+static SceNpTrophyFlagArray trp_flags;
+static uint32_t trp_count = 0;
+static int trophies_available = 0;
+
+static uint32_t trp_queue[TRP_QUEUE_SIZE];
+static int trp_queue_head = 0;
+static int trp_queue_tail = 0;
+static SceUID trp_queue_mutex = -1;
 static SceUID trp_request_sema = -1;
-static SceUID trp_worker_thd = -1;
-static volatile int trp_worker_running = 0;
+static SceUID trp_api_mutex = -1; // guards trp_handle + trp_flags
 
+static void trp_flag_set(uint32_t id) { trp_flags.bits[id >> 5] |= 1u << (id & 31u); }
+static int  trp_flag_get(uint32_t id) { return (trp_flags.bits[id >> 5] >> (id & 31u)) & 1u; }
+
+// Worker thread: the render loop never blocks on trophy IO.
 static int trophies_unlocker(SceSize args, void *argp) {
-    l_info("trophy: worker thread started");
-    while (trp_worker_running) {
+    while (1) {
         sceKernelWaitSema(trp_request_sema, 1, NULL);
-        if (!trp_worker_running)
-            break;
 
-        while (trp_q_tail != trp_q_head) {
-            int id = trp_queue[trp_q_tail];
-            trp_q_tail = (trp_q_tail + 1) % TROPHY_QUEUE_SIZE;
-
-            int trp_handle = -1;
-            int ret = sceNpTrophyCreateHandle(&trp_handle);
-            if (ret >= 0 && trp_handle >= 0) {
-                int unlock_res = sceNpTrophyUnlockTrophy(trp_ctx, trp_handle, id, &plat_id);
-                l_info("trophy: unlocked ID %d, res = 0x%08X", id, unlock_res);
-                sceNpTrophyDestroyHandle(trp_handle);
-            } else {
-                l_warn("trophy: sceNpTrophyCreateHandle failed: 0x%08X", ret);
-            }
+        sceKernelWaitSema(trp_queue_mutex, 1, NULL);
+        if (trp_queue_head == trp_queue_tail) {
+            sceKernelSignalSema(trp_queue_mutex, 1);
+            continue;
         }
+        uint32_t id = trp_queue[trp_queue_tail];
+        trp_queue_tail = (trp_queue_tail + 1) % TRP_QUEUE_SIZE;
+        sceKernelSignalSema(trp_queue_mutex, 1);
+
+        sceKernelWaitSema(trp_api_mutex, 1, NULL);
+        int plat_id = -1;
+        int res = sceNpTrophyUnlockTrophy(trp_ctx, trp_handle, (int)id, &plat_id);
+        if (res == 0 || res == SCE_NP_TROPHY_ERROR_TROPHY_ALREADY_UNLOCKED) {
+            trp_flag_set(id);
+            if (plat_id >= 0 && plat_id < TRP_MAX)
+                trp_flag_set((uint32_t)plat_id);
+            l_error("trophy: %u unlocked (res=0x%08X, plat=%d)", (unsigned)id, (unsigned)res, plat_id);
+        } else {
+            l_error("trophy: UnlockTrophy(%u) failed: 0x%08X", (unsigned)id, (unsigned)res);
+        }
+        sceKernelSignalSema(trp_api_mutex, 1);
     }
-    l_info("trophy: worker thread exiting");
     return 0;
 }
 
 int trophy_init(void) {
-    l_info("trophy: initializing PS Vita trophies for %s...", comm_id);
+    sceClibMemset(&trp_flags, 0, sizeof(trp_flags));
 
-    int ret = sceSysmoduleLoadModule(SCE_SYSMODULE_NP_TROPHY);
-    if (ret < 0) {
-        l_warn("trophy: sceSysmoduleLoadModule(SCE_SYSMODULE_NP_TROPHY) failed: 0x%08X", ret);
-        return ret;
+    SceUID fd = sceIoOpen(TRP_PATH, SCE_O_RDONLY, 0);
+    if (fd < 0) {
+        l_error("trophy: %s not readable (0x%08X), trophies disabled", TRP_PATH, (unsigned)fd);
+        return fd;
+    }
+    sceIoClose(fd);
+
+    sceSysmoduleLoadModule(SCE_SYSMODULE_NP_TROPHY);
+
+    int res = sceNpTrophyInit(NULL);
+    if (res < 0 && res != SCE_NP_TROPHY_ERROR_ALREADY_INITIALIZED) {
+        l_error("trophy: sceNpTrophyInit failed: 0x%08X", (unsigned)res);
+        return res;
     }
 
-    ret = sceNpTrophyInit(NULL);
-    if (ret < 0) {
-        l_warn("trophy: sceNpTrophyInit failed: 0x%08X", ret);
-        return ret;
+    res = sceNpTrophyCreateContext(&trp_ctx, trp_comm_id, trp_comm_sign, 0);
+    if (res < 0) {
+        l_error("trophy: CreateContext failed: 0x%08X (NoTrpDrm missing?)", (unsigned)res);
+        return res;
     }
 
-    ret = sceNpTrophyCreateContext(&trp_ctx, comm_id, signature, 0);
-    if (ret < 0) {
-        l_warn("trophy: sceNpTrophyCreateContext returned 0x%08X (trophies disabled or NoTrpDrm missing)", ret);
-        return ret;
-    }
+    // Installs/registers the TRP on first run; needs a live display (after gl_init).
+    SceNpTrophySetupDialogParam setup;
+    sceClibMemset(&setup, 0, sizeof(setup));
+    _sceCommonDialogSetMagicNumber(&setup.commonParam);
+    setup.sdkVersion = PSP2_SDK_VERSION;
+    setup.context = trp_ctx;
 
-    // Run trophy setup dialog
-    SceNpTrophySetupDialogParam setupParam;
-    sceClibMemset(&setupParam, 0, sizeof(SceNpTrophySetupDialogParam));
-    _sceCommonDialogSetMagicNumber(&setupParam.commonParam);
-    setupParam.sdkVersion = PSP2_SDK_VERSION;
-    setupParam.options = 0;
-    setupParam.context = trp_ctx;
-
-    ret = sceNpTrophySetupDialogInit(&setupParam);
-    if (ret >= 0) {
+    res = sceNpTrophySetupDialogInit(&setup);
+    if (res >= 0) {
+        int frames = 0;
         while (sceNpTrophySetupDialogGetStatus() == SCE_COMMON_DIALOG_STATUS_RUNNING) {
+            if (++frames > TRP_DIALOG_MAX_FRAMES) {
+                l_error("trophy: setup dialog stuck, trophies disabled");
+                sceNpTrophySetupDialogTerm();
+                return -1;
+            }
+            sceDisplayWaitVblankStart();
             vglSwapBuffers(GL_TRUE);
         }
         sceNpTrophySetupDialogTerm();
+    } else {
+        l_error("trophy: SetupDialogInit returned 0x%08X", (unsigned)res);
     }
 
-    // Start background unlocker thread
-    trp_worker_running = 1;
-    trp_request_sema = sceKernelCreateSema("trps_request_sema", 0, 0, TROPHY_QUEUE_SIZE, NULL);
-    trp_worker_thd = sceKernelCreateThread("trophies_unlocker", &trophies_unlocker, 0x10000100, 0x10000, 0, 0, NULL);
-    if (trp_worker_thd >= 0) {
-        sceKernelStartThread(trp_worker_thd, 0, NULL);
+    res = sceNpTrophyCreateHandle(&trp_handle);
+    if (res < 0) {
+        l_error("trophy: CreateHandle failed: 0x%08X", (unsigned)res);
+        return res;
     }
 
-    // Fetch initial unlock state
-    int trp_handle = -1;
     uint32_t count = 0;
-    ret = sceNpTrophyCreateHandle(&trp_handle);
-    if (ret >= 0) {
-        sceNpTrophyGetTrophyUnlockState(trp_ctx, trp_handle, &trophies_unlocks, &count);
+    res = sceNpTrophyGetTrophyUnlockState(trp_ctx, trp_handle, &trp_flags, &count);
+    if (res < 0 || count == 0 || count > TRP_MAX) {
+        l_error("trophy: GetTrophyUnlockState failed: 0x%08X (count=%u)", (unsigned)res, (unsigned)count);
         sceNpTrophyDestroyHandle(trp_handle);
+        trp_handle = -1;
+        return res < 0 ? res : -1;
     }
+    trp_count = count;
+
+    trp_queue_mutex  = sceKernelCreateSema("trp_queue_mutex", 0, 1, 1, NULL);
+    trp_request_sema = sceKernelCreateSema("trp_request_sema", 0, 0, TRP_QUEUE_SIZE, NULL);
+    trp_api_mutex    = sceKernelCreateSema("trp_api_mutex", 0, 1, 1, NULL);
+    if (trp_queue_mutex < 0 || trp_request_sema < 0 || trp_api_mutex < 0)
+        return -1;
+
+    SceUID thid = sceKernelCreateThread("trophies_unlocker", trophies_unlocker, 0x10000100, 0x10000, 0, 0, NULL);
+    if (thid < 0 || sceKernelStartThread(thid, 0, NULL) < 0)
+        return -1;
 
     trophies_available = 1;
-    l_success("trophy: native trophies successfully initialized and active.");
+    l_error("trophy: OK, %u trophies ready", (unsigned)trp_count);
     return 0;
 }
 
 uint8_t trophy_is_unlocked(uint32_t id) {
-    if (!trophies_available || id == 0 || id > 128)
+    if (!trophies_available || id >= trp_count)
         return 0;
-
-    uint32_t word = (id - 1) >> 5;
-    uint32_t bit  = (id - 1) & 31;
-    if (word < 4) {
-        return (trophies_unlocks.unk[word] & (1u << bit)) != 0;
-    }
-    return 0;
+    sceKernelWaitSema(trp_api_mutex, 1, NULL);
+    int v = trp_flag_get(id);
+    sceKernelSignalSema(trp_api_mutex, 1);
+    return (uint8_t)v;
 }
 
 void trophy_unlock(uint32_t id) {
-    if (!trophies_available || id == 0 || id > 128)
+    // id 0 is the platinum: only the OS may unlock it.
+    if (!trophies_available || id == 0 || id >= trp_count || trophy_is_unlocked(id))
         return;
 
-    if (trophy_is_unlocked(id)) {
-        l_debug("trophy: ID %u already unlocked, skipping.", (unsigned)id);
-        return;
-    }
-
-    // Mark as unlocked in local cache immediately
-    uint32_t word = (id - 1) >> 5;
-    uint32_t bit  = (id - 1) & 31;
-    if (word < 4) {
-        trophies_unlocks.unk[word] |= (1u << bit);
-    }
-
-    // Enqueue for async worker
-    int next_head = (trp_q_head + 1) % TROPHY_QUEUE_SIZE;
-    if (next_head != trp_q_tail) {
-        trp_queue[trp_q_head] = (int)id;
-        trp_q_head = next_head;
+    sceKernelWaitSema(trp_queue_mutex, 1, NULL);
+    int next = (trp_queue_head + 1) % TRP_QUEUE_SIZE;
+    if (next != trp_queue_tail) {
+        trp_queue[trp_queue_head] = id;
+        trp_queue_head = next;
         sceKernelSignalSema(trp_request_sema, 1);
     } else {
-        l_warn("trophy: unlock queue full, dropped ID %u", (unsigned)id);
+        l_error("trophy: queue full, dropped %u", (unsigned)id);
     }
-}
-
-void trophy_term(void) {
-    if (!trophies_available)
-        return;
-
-    trophies_available = 0;
-    trp_worker_running = 0;
-
-    if (trp_request_sema >= 0) {
-        sceKernelSignalSema(trp_request_sema, 1);
-        if (trp_worker_thd >= 0) {
-            sceKernelWaitThreadEnd(trp_worker_thd, NULL, NULL);
-            sceKernelDeleteThread(trp_worker_thd);
-            trp_worker_thd = -1;
-        }
-        sceKernelDeleteSema(trp_request_sema);
-        trp_request_sema = -1;
-    }
-
-    if (trp_ctx >= 0) {
-        sceNpTrophyDestroyContext(trp_ctx);
-        trp_ctx = -1;
-    }
-
-    sceNpTrophyTerm();
-    sceSysmoduleUnloadModule(SCE_SYSMODULE_NP_TROPHY);
-    l_info("trophy: system terminated.");
+    sceKernelSignalSema(trp_queue_mutex, 1);
 }
