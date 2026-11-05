@@ -435,3 +435,22 @@ remapear, quitar Facebook y poder usar los menús con botones.
 - Ahora `control_visual_rect()` replica `GUI_DrawControls()` (sprite, knob, texto) y el caso de las
   celdas; la navegación direccional usa esos centros y salta lo que está fuera de pantalla.
 - **Build:** Release OK. **Estado:** pendiente de prueba en consola.
+
+## Trofeos nativos + cuelgue con NoTrpDrm (2026-11-05)
+
+- **Feedback v1.0.0:** "con NoTrpDrm el juego no arranca". Causa: el VPK no traía `TROPHY.TRP`.
+  Sin el plugin `sceNpTrophyCreateContext` falla y se sigue; con el plugin se llega al setup dialog
+  sin nada que instalar.
+- **Fix:** `source/utils/trophy.c` = implementación de Prince of Persia v01.55 (funciona en consola):
+  chequea `app0:sce_sys/trophy/CRDH00001_00/TROPHY.TRP` antes de tocar NP, comm_id `CRDH00001` sin
+  `NP_COMMUNICATION_ID` en param.sfo, handle persistente, bit de caché solo tras confirmación del OS,
+  platino solo por el OS. Tope de 30 s al setup dialog.
+- **TRP:** `extras/scripts/generate_trophies.py` (formato/hash/PNG8 de PoP). Trofeo N = award N-1
+  (`Social_ShowAchievementNotification`), `java.c` ya hacía `achId + 1`. Íconos desde `assets/Help/`.
+- **Build:** Release OK, el VPK lleva el TRP. **Estado:** pendiente de prueba en consola.
+- **Consola (build 10:49):** error del sistema `C0-11133-9`. Hipótesis: el comm_id `PSVCDH001` no tiene
+  el formato NP (4 letras + 5 dígitos, como `POPC00001`/`ELDR00001`). Cambiado a `CRDH00001`
+  (TRP `CRDH00001_00`); el TITLEID sigue siendo `PSVCDH001`. Pendiente de prueba.
+- **Consola (2026-11-05):** con el TRP `CRDH00001_00` subido, los trofeos se instalan. Pantalla
+  negra un rato durante el setup dialog (sin indicador) → issue abierto: hace falta pantalla de carga.
+- **Release v1.2.0** (`VITA_VERSION 01.20`).

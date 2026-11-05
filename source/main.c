@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
     gl_init();
     l_success("OpenGL initialized.");
 
-    // Initialize trophies (requires NoTrpDrm + trophy pack in ux0:app/PSVCDH001/sce_sys/trophy/)
+    // Trophies: no-op unless NoTrpDrm is installed (TRP ships in the VPK)
     trophy_init();
 
 
@@ -178,7 +178,6 @@ int main(int argc, char *argv[]) {
         gl_swap();
     }
 
-    trophy_term();
     audio_term();
     sceKernelExitDeleteThread(0);
     return 0;
