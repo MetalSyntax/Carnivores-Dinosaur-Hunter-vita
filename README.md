@@ -168,6 +168,27 @@ patches those five checks. Without that patch the APK stops opening once a saved
 (the engine never closes its save file), which gives a black screen, and the content packs never
 open.
 
+## ☕ Support My Work
+
+This project is **free** and will stay free. If you enjoy it, a tip from **$1** helps me keep porting games to the PS Vita:
+
+<p align="center">
+  <a href="https://ko-fi.com/metalsyntax"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi"></a>
+</p>
+
+- **Ko-fi:** [ko-fi.com/metalsyntax](https://ko-fi.com/metalsyntax)
+- **PayPal:** [paypal.me/MetalSyntax](https://paypal.me/MetalSyntax)
+- **Bitcoin (BTC):** `133HdCsaWxdjTfmwpgGVykByhNBV338uRc`
+
+**Ko-fi supporters get:**
+- **Early access** to new ports before their public release (test builds of upcoming projects).
+- **Data preparation scripts and step-by-step guides** to set up your own game files for each new port.
+- A say in which games I port next.
+
+> Game files are never distributed. You always need your own legally obtained copy of the game.
+
+---
+
 ## Credits
 
 Based on [soloader-boilerplate](https://github.com/v-atamanenko/soloader-boilerplate) (TheFloW, Rinnegatamante,
